@@ -1,0 +1,9 @@
+jupyter
+more_itertools
+parameterfree
+peft
+pyskiplist
+scipy
+sentence_transformers
+torch
+transformers
