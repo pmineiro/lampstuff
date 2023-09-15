@@ -48,6 +48,10 @@ class TrainLoader(object):
         return self._num_classes
 
     @property
+    def choices(self):
+        return [ "[1]", "[2]" ]
+
+    @property
     def batch_size(self):
         return self._batch_size
 
