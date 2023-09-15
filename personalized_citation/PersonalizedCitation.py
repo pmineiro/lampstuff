@@ -1,3 +1,12 @@
+def embedder(stuff):
+    from sentence_transformers import SentenceTransformer
+    import torch
+
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings = model.encode(stuff, convert_to_tensor=True)
+    normalized = torch.nn.functional.normalize(embeddings)
+    return normalized
+
 def download_and_compress(url):
     import gzip
     import requests
@@ -63,6 +72,7 @@ class DataLoader(object):
 
         self._num_classes = 2
         self._batch_size = batch_size
+        self._embeddings = {}
 
     @property
     def num_labels(self):
@@ -75,6 +85,24 @@ class DataLoader(object):
     @property
     def batch_size(self):
         return self._batch_size
+
+    def stringify_articles(self, article_ids):
+        return [ f'Title: {title}\nAbstract: {abstract}'
+                 for article_id in article_ids
+                 for article in (self._articles[article_id],)
+                 for title in (' '.join(article['title'].strip().split()),)
+                 for abstract in (' '.join(article['abstract'].strip().split()),)
+               ]
+
+    def embeddings(self, article_ids):
+        import torch
+
+        for article_id in article_ids:
+            if article_id not in self._embeddings:
+                stuff = self.stringify_articles([article_id])
+                self._embeddings[article_id] = embedder(stuff)
+
+        return torch.cat([ self._embeddings[article_id] for article_id in article_ids ], dim=0)
 
     def __iter__(self):
         def items():
