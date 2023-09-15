@@ -6,7 +6,7 @@ def download_and_compress(url):
 
     filename = unquote(urlparse(url).path.split("/")[-1])
     filename += '.gz'
-    
+
     # Streaming, so we can iterate over the response.
     response = requests.get(url, stream=True)
     total_size_in_bytes= int(response.headers.get('content-length', 0))
@@ -19,26 +19,47 @@ def download_and_compress(url):
     progress_bar.close()
     assert total_size_in_bytes > 0 and progress_bar.n == total_size_in_bytes
 
-class TrainLoader(object):
-    def __init__(self, batch_size):
+class DataLoader(object):
+    @staticmethod
+    def to_star_schema(obj):
+        ds = []
+        articles = []
+        article_ids = {}
+        for ex in obj:
+            inp, profile = ex['input'], ex['profile']
+
+            for article in ex['profile']:
+                if article['id'] not in article_ids:
+                    article_ids[article['id']] = len(articles)
+                    article['id'] = len(articles)
+                    articles.append(article)
+                else:
+                    article['id'] = article_ids[article['id']]
+
+            ex['profile'] = [ article['id'] for article in ex['profile'] ]
+
+            ds.append(ex)
+
+        return ds, articles
+
+    def __init__(self, batch_size, *, split):
         import gzip
         import json
         import os
 
-        if not os.path.isfile('train_outputs.json.gz'):
-            download_and_compress('https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/train/train_outputs.json')
+        if not os.path.isfile(f'{split}_outputs.json.gz'):
+            download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_outputs.json')
 
-        with gzip.open('train_outputs.json.gz', 'r') as fin:
+        with gzip.open(f'{split}_outputs.json.gz', 'r') as fin:
             data = json.loads(fin.read().decode('utf-8'))
             assert data['task'] == 'LaMP_1'
             self.labels = { v['id']:v['output'] for v in data['golds']}
 
+        if not os.path.isfile(f'{split}_questions.json.gz'):
+            download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_questions.json')
 
-        if not os.path.isfile('train_questions.json.gz'):
-            download_and_compress('https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/train/train_questions.json')
-
-        with gzip.open('train_questions.json.gz', 'r') as fin:
-            self._ds = json.loads(fin.read().decode('utf-8'))
+        with gzip.open(f'{split}_questions.json.gz', 'r') as fin:
+            self._ds, self._articles = self.to_star_schema(json.loads(fin.read().decode('utf-8')))
 
         self._num_classes = 2
         self._batch_size = batch_size
@@ -59,7 +80,7 @@ class TrainLoader(object):
         def items():
             from more_itertools import chunked
             import torch
-            
+
             for batch in chunked(torch.randperm(len(self._ds), device='cpu').tolist(), self._batch_size):
                 inputs = [ ex['input'] for ind in batch for ex in (self._ds[ind],) ]
                 profiles = [ ex['profile'] for ind in batch for ex in (self._ds[ind],) ]
@@ -69,4 +90,7 @@ class TrainLoader(object):
         return items()
 
 def train_loader(batch_size):
-    return TrainLoader(batch_size)
+    return DataLoader(batch_size, split='train')
+
+def dev_loader(batch_size):
+    return DataLoader(batch_size, split='dev')
