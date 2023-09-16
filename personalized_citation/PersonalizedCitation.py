@@ -1,12 +1,3 @@
-def embedder(stuff):
-    from sentence_transformers import SentenceTransformer
-    import torch
-
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    embeddings = model.encode(stuff, convert_to_tensor=True)
-    normalized = torch.nn.functional.normalize(embeddings)
-    return normalized
-
 def download_and_compress(url):
     import gzip
     import requests
@@ -55,6 +46,7 @@ class DataLoader(object):
         import gzip
         import json
         import os
+        from sentence_transformers import SentenceTransformer
 
         if not os.path.isfile(f'{split}_outputs.json.gz'):
             download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_outputs.json')
@@ -73,6 +65,7 @@ class DataLoader(object):
         self._num_classes = 2
         self._batch_size = batch_size
         self._embeddings = {}
+        self._embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
     @property
     def num_labels(self):
@@ -86,6 +79,13 @@ class DataLoader(object):
     def batch_size(self):
         return self._batch_size
 
+    def embed(self, stuff):
+        import torch
+        embeddings = self._embedder.encode(stuff, convert_to_tensor=True)
+        normalized = torch.nn.functional.normalize(embeddings)
+        return normalized
+
+
     def stringify_articles(self, article_ids):
         return [ f'Title: {title}\nAbstract: {abstract}'
                  for article_id in article_ids
@@ -97,12 +97,17 @@ class DataLoader(object):
     def embeddings(self, article_ids):
         import torch
 
-        for article_id in article_ids:
-            if article_id not in self._embeddings:
-                stuff = self.stringify_articles([article_id])
-                self._embeddings[article_id] = embedder(stuff)
+        missing_article_ids = [ article_id
+                                for article_id in article_ids
+                                if article_id not in self._embeddings ]
 
-        return torch.cat([ self._embeddings[article_id] for article_id in article_ids ], dim=0)
+        if len(missing_article_ids):
+            stuff = self.stringify_articles(missing_article_ids)
+            embeddings = self.embed(stuff)
+            for article_id, embedding in zip(missing_article_ids, embeddings):
+                self._embeddings[article_id] = embedding
+
+        return torch.stack([ self._embeddings[article_id] for article_id in article_ids ], dim=0)
 
     def __iter__(self):
         def items():

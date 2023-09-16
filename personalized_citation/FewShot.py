@@ -1,17 +1,17 @@
 import torch
 
 class ZeroShotClassifier(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, *, gpt2=None):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         super().__init__()
-        self._transformer = AutoModelForCausalLM.from_pretrained('gpt2')
+        self._transformer = AutoModelForCausalLM.from_pretrained('gpt2' if gpt2 is None else gpt2)
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='right')
         self._tokenizer.pad_token = self._tokenizer.eos_token
         self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
 
     def logprobs(self, multiplechoices):
-        allquestions = [ f'Problem: {problem}\nSolution: {c}'
+        allquestions = [ f'Question: {problem}\nAnswer: {c}'
                          for (problem, choices) in multiplechoices
                          for c in choices ]
         input_ids = self._tokenizer(allquestions, return_tensors='pt', padding='longest')
@@ -42,15 +42,15 @@ class FewShotClassifier(torch.nn.Module):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         super().__init__()
-        self._transformer = AutoModelForCausalLM.from_pretrained('gpt2') if gpt2 is None else gpt2
+        self._transformer = AutoModelForCausalLM.from_pretrained('gpt2' if gpt2 is None else gpt2)
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='right')
         self._tokenizer.pad_token = self._tokenizer.eos_token
         self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
 
     def logprobs(self, multiplechoices, shots):
-        allquestions = [ f'{preamble}\n\nProblem: {problem}\nSolution: {c}'
+        allquestions = [ f'User profile; {preamble}\n\nQuestion: {problem}\nAnswer: {c}'
                          for (problem, choices), examples in zip(multiplechoices, shots)
-                         for preamble in ('\n\n'.join(examples),)
+                         for preamble in ('\n'.join(examples),)
                          for c in choices ]
         input_ids = self._tokenizer(allquestions, return_tensors='pt', padding='longest')
         dev_input_ids = input_ids.to(self._transformer.device)
