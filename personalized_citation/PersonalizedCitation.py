@@ -26,8 +26,6 @@ class DataLoader(object):
         articles = []
         article_ids = {}
         for ex in obj:
-            inp, profile = ex['input'], ex['profile']
-
             for article in ex['profile']:
                 if article['id'] not in article_ids:
                     article_ids[article['id']] = len(articles)
@@ -54,13 +52,14 @@ class DataLoader(object):
         with gzip.open(f'{split}_outputs.json.gz', 'r') as fin:
             data = json.loads(fin.read().decode('utf-8'))
             assert data['task'] == 'LaMP_1'
-            self.labels = { v['id']:v['output'] for v in data['golds']}
+            self._labels = { v['id']:v['output'] for v in data['golds']}
 
         if not os.path.isfile(f'{split}_questions.json.gz'):
             download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_questions.json')
 
         with gzip.open(f'{split}_questions.json.gz', 'r') as fin:
-            self._ds, self._articles = self.to_star_schema(json.loads(fin.read().decode('utf-8')))
+            data = json.loads(fin.read().decode('utf-8'))
+            self._ds, self._articles = self.to_star_schema(data)
 
         self._num_classes = 2
         self._batch_size = batch_size
@@ -117,7 +116,7 @@ class DataLoader(object):
             for batch in chunked(torch.randperm(len(self._ds), device='cpu').tolist(), self._batch_size):
                 inputs = [ ex['input'] for ind in batch for ex in (self._ds[ind],) ]
                 profiles = [ ex['profile'] for ind in batch for ex in (self._ds[ind],) ]
-                labels = [ self.labels[ex['id']] for ind in batch for ex in (self._ds[ind],) ]
+                labels = [ self._labels[ex['id']] for ind in batch for ex in (self._ds[ind],) ]
                 yield (inputs, profiles, labels)
 
         return items()
