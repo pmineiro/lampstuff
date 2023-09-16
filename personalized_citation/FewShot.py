@@ -42,7 +42,7 @@ class FewShotClassifier(torch.nn.Module):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         super().__init__()
-        self._transformer = AutoModelForCausalLM.from_pretrained('gpt2' if gpt2 is None else gpt2)
+        self._transformer = AutoModelForCausalLM.from_pretrained('gpt2') if gpt2 is None else gpt2
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='right')
         self._tokenizer.pad_token = self._tokenizer.eos_token
         self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
@@ -73,7 +73,7 @@ class FewShotClassifier(torch.nn.Module):
                     for (_, choices), ind in zip(multiplechoices, guess_indices.to('cpu'))
                   ]
 
-        return guesses
+        return guesses, guess_indices
 
 class PEFTFewShotClassifier(FewShotClassifier):
     def __init__(self, peft_config, *, gpt2=None):
@@ -81,7 +81,7 @@ class PEFTFewShotClassifier(FewShotClassifier):
         from peft import IA3Config, TaskType, get_peft_model
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        super().__init__(gpt2)
+        super().__init__(gpt2=gpt2)
         self._peft_config = peft_config
         self._transformer = get_peft_model(self._transformer, self._peft_config)
         self._optim = parameterfree.COCOB(self.parameters())
@@ -90,9 +90,9 @@ class PEFTFewShotClassifier(FewShotClassifier):
         import torch.nn.functional as F
 
         self._optim.zero_grad()
-        logits = F.log_softmax(self.logprobs(multiplechoices, shots), dim=1)
-        indexed_logits = logits[range(logits.shape[0]), a]
-        loss = F.binary_cross_entropy_with_logits(indexed_logits, r)
+        logprobs = F.log_softmax(self.logprobs(multiplechoices, shots), dim=1)
+        indexed_logprobs = logprobs[range(logprobs.shape[0]), a]
+        loss = -torch.dot(indexed_logprobs, r)
         loss.backward()
         self._optim.step()
-        return loss.item()
+        return -loss.item()
