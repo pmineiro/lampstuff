@@ -21,29 +21,22 @@ def download_and_compress(url):
 
 class DataLoader(object):
     @staticmethod
-    def to_star_schema(obj):
-        ds = []
-        articles = []
-        article_ids = {}
-        for ex in obj:
-            for article in ex['profile']:
-                if article['id'] not in article_ids:
-                    article_ids[article['id']] = len(articles)
-                    article['id'] = len(articles)
-                    articles.append(article)
-                else:
-                    article['id'] = article_ids[article['id']]
+    def _augment_examples(exs):
+        import re
 
-            ex['profile'] = [ article['id'] for article in ex['profile'] ]
+        for n, ex in enumerate(exs):
+            m = re.search(r'For an author who has written the paper with the title "(.*?)", which reference is related?', ex['input'])
+            ex['title'] = m.group(1)
+            ex['dsind'] = n
+            m = re.search(r'without explanation. \[1\]: "(.*?)" \[2\]: "(.*)"', ex['input'])
+            ex['ref1'] = m.group(1)
+            ex['ref2'] = m.group(2)
 
-            ds.append(ex)
-
-        return ds, articles
-
-    def __init__(self, batch_size, *, split):
+    def __init__(self, batch_size, *, split, max_index):
         import gzip
         import json
         import os
+        from math import inf
         from sentence_transformers import SentenceTransformer
 
         if not os.path.isfile(f'{split}_outputs.json.gz'):
@@ -58,11 +51,13 @@ class DataLoader(object):
             download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_questions.json')
 
         with gzip.open(f'{split}_questions.json.gz', 'r') as fin:
-            data = json.loads(fin.read().decode('utf-8'))
-            self._ds, self._articles = self.to_star_schema(data)
+            self._ds = json.loads(fin.read().decode('utf-8'))
+            self._augment_examples(self._ds)
 
         self._num_classes = 2
         self._batch_size = batch_size
+        self._max_index = inf if max_index is None else max_index
+        assert self._max_index >= self._batch_size
         self._embeddings = {}
         self._embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -84,45 +79,29 @@ class DataLoader(object):
         normalized = torch.nn.functional.normalize(embeddings)
         return normalized
 
+    def append_to_title(self, example, stuff):
+        import re
 
-    def stringify_articles(self, article_ids):
-        return [ f'Title: {title}\nAbstract: {abstract}'
-                 for article_id in article_ids
-                 for article in (self._articles[article_id],)
-                 for title in (' '.join(article['title'].strip().split()),)
-                 for abstract in (' '.join(article['abstract'].strip().split()),)
-               ]
-
-    def embeddings(self, article_ids):
-        import torch
-
-        missing_article_ids = [ article_id
-                                for article_id in article_ids
-                                if article_id not in self._embeddings ]
-
-        if len(missing_article_ids):
-            stuff = self.stringify_articles(missing_article_ids)
-            embeddings = self.embed(stuff)
-            for article_id, embedding in zip(missing_article_ids, embeddings):
-                self._embeddings[article_id] = embedding
-
-        return torch.stack([ self._embeddings[article_id] for article_id in article_ids ], dim=0)
+        m = re.match(r'^(.*?the title )(".*?")(, which reference.*)', example['input'])
+        return m.group(1) + m.group(2) + f' and {stuff}' + m.group(3)
+                   
 
     def __iter__(self):
         def items():
             from more_itertools import chunked
             import torch
 
-            for batch in chunked(torch.randperm(len(self._ds), device='cpu').tolist(), self._batch_size):
-                inputs = [ ex['input'] for ind in batch for ex in (self._ds[ind],) ]
-                profiles = [ ex['profile'] for ind in batch for ex in (self._ds[ind],) ]
+            permlen = min(self._max_index, len(self._ds))
+
+            for batch in chunked(torch.randperm(permlen, device='cpu').tolist(), self._batch_size):
+                examples = [ ex for ind in batch for ex in (self._ds[ind],) ]
                 labels = [ self._labels[ex['id']] for ind in batch for ex in (self._ds[ind],) ]
-                yield (inputs, profiles, labels)
+                yield (examples, labels)
 
         return items()
 
-def train_loader(batch_size):
-    return DataLoader(batch_size, split='train')
+def train_loader(batch_size, *, max_index=None):
+    return DataLoader(batch_size, split='train', max_index=max_index)
 
-def dev_loader(batch_size):
-    return DataLoader(batch_size, split='dev')
+def dev_loader(batch_size, *, max_index=None):
+    return DataLoader(batch_size, split='dev', max_index=max_index)
