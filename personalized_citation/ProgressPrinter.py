@@ -3,6 +3,16 @@ class ProgressPrinter(object):
         super().__init__()
         self.rawheader = header
         self.width = max(9, max(len(h) for h in self.rawheader))
+        self.autoprint = True
+
+    @property
+    def autoprint(self):
+        return self._autoprint
+
+    @autoprint.setter
+    def autoprint(self, val):
+        self._autoprint = val
+        return self._autoprint
 
     def addobs(self, *observation):
         for n, v in enumerate(observation):
@@ -13,7 +23,7 @@ class ProgressPrinter(object):
                 self.sincelast[n] += v
 
         self.cnt += 1
-        if self.cnt and (self.cnt & (self.cnt - 1)) == 0:
+        if self.autoprint and self.cnt and (self.cnt & (self.cnt - 1)) == 0:
             self.print()
 
     def print(self):
