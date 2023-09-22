@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-optimizer = lambda params: parameterfree.COCOB(params, alpha=1_000)
+optimizer = lambda params: parameterfree.COCOB(params)
 
 class GPT2Classifier(nn.Module):
     def __init__(self, num_labels, *, gpt2=None):
