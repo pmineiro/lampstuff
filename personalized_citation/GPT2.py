@@ -5,6 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+optimizer = lambda params: parameterfree.COCOB(params, alpha=1_000)
+
 class GPT2Classifier(nn.Module):
     def __init__(self, num_labels, *, gpt2=None):
         super().__init__()
@@ -13,10 +15,11 @@ class GPT2Classifier(nn.Module):
         self._transformer = AutoModelForCausalLM.from_pretrained('gpt2') if gpt2 is None else gpt2
         hdim = getattr(self._transformer.config, 'n_embd', False) or getattr(self._transformer.config, 'hidden_size')
         self._score = nn.Linear(hdim, self._num_labels, bias=(self._num_labels==1))
+        with torch.no_grad(): self._score.weight.fill_(0)
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='right')
         self._tokenizer.pad_token = self._tokenizer.eos_token
         self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
-        self._optim = parameterfree.COCOB(self.parameters())
+        self._optim = optimizer(self.parameters())
 
     def forward(self, data):
         inputs = self._tokenizer(data, return_tensors='pt', padding=True).to(self._transformer.device)
@@ -29,7 +32,7 @@ class GPT2Classifier(nn.Module):
     def clone(self):
         other = GPT2Classifier(self._num_labels)
         other.load_state_dict(self.state_dict())
-        other._optim = parameterfree.COCOB(other.parameters())
+        other._optim = optimizer(other.parameters())
         other._optim.load_state_dict(self._optim.state_dict())
         return other
 
@@ -38,7 +41,7 @@ class GPT2Classifier(nn.Module):
         return torch.exp(self.forward(x)) if self._num_labels > 1 else torch.special.expit(self.forward(x))
 
     def learn(self, x, y):
-        self.train()
+        self.eval()
         self._optim.zero_grad()
         output = self(x)
         loss = F.nll_loss(output, y) if self._num_labels > 1 else F.binary_cross_entropy_with_logits(output, y)
@@ -50,7 +53,7 @@ class GPT2Classifier(nn.Module):
         if self._num_labels == 1:
             return self.learn(x, r)
         else:
-            self.train()
+            self.eval()
             self._optim.zero_grad()
             logprobs = self(x)
             indexed_logprobs = logprobs[range(logprobs.shape[0]), a]
@@ -64,13 +67,13 @@ class PeftGPT2Classifier(GPT2Classifier):
         super().__init__(num_labels, gpt2=gpt2)
         self._peft_config = peft_config
         self._transformer = get_peft_model(self._transformer, self._peft_config)
-        self._optim = parameterfree.COCOB(self.parameters())
+        self._optim = optimizer(self.parameters())
 
     def clone(self):
         other = PeftGPT2Classifier(self._num_labels, self._peft_config, gpt2=self._transformer.base_model.model)
         other._transformer.load_state_dict(self._transformer.state_dict())
         other._score.load_state_dict(self._score.state_dict())
-        other._optim = parameterfree.COCOB(other.parameters())
-        other._optim.load_state_dict(self._optim.state_dict())
+        other._optim = optimizer(other.parameters())
+        other._optim.load_state_dict(other._optim.state_dict())
 
         return other

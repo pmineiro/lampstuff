@@ -66,6 +66,10 @@ class DataLoader(object):
         return self._num_classes
 
     @property
+    def num_examples(self):
+        return min(self._max_index, len(self._ds))
+
+    @property
     def choices(self):
         return [ "[1]", "[2]" ]
 
@@ -91,9 +95,7 @@ class DataLoader(object):
             from more_itertools import chunked
             import torch
 
-            permlen = min(self._max_index, len(self._ds))
-
-            for batch in chunked(torch.randperm(permlen, device='cpu').tolist(), self._batch_size):
+            for batch in chunked(torch.randperm(self.num_examples, device='cpu').tolist(), self._batch_size):
                 examples = [ ex for ind in batch for ex in (self._ds[ind],) ]
                 labels = [ self._labels[ex['id']] for ind in batch for ex in (self._ds[ind],) ]
                 yield (examples, labels)
