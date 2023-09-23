@@ -1,8 +1,6 @@
 import parameterfree
 import torch
 
-optimizer = lambda params: parameterfree.COCOB(params)
-
 class T5Classifier(torch.nn.Module):
     def __init__(self, num_labels, *, t5=None, opt_factory=None):
         from transformers import T5ForConditionalGeneration, AutoTokenizer
@@ -73,13 +71,13 @@ class PeftT5Classifier(T5Classifier):
         super().__init__(num_labels, t5=t5, opt_factory=opt_factory)
         self._peft_config = peft_config
         self._transformer = get_peft_model(self._transformer, self._peft_config)
-        self._optim = optimizer(self.parameters())
+        self._optim = self._opt_factory(self.parameters())
 
     def clone(self):
         other = PeftT5Classifier(self._num_labels, self._peft_config, t5=self._transformer.base_model.model)
         other._transformer.load_state_dict(self._transformer.state_dict())
         other._score.load_state_dict(self._score.state_dict())
-        other._optim = optimizer(other.parameters())
+        other._optim = self._opt_factory(other.parameters())
         other._optim.load_state_dict(self._optim.state_dict())
 
         return other
