@@ -4,7 +4,7 @@ import torch
 optimizer = lambda params: parameterfree.COCOB(params)
 
 class T5Classifier(torch.nn.Module):
-    def __init__(self, num_labels, *, t5=None):
+    def __init__(self, num_labels, *, t5=None, opt_factory=None):
         from transformers import T5ForConditionalGeneration, AutoTokenizer
 
         assert num_labels == 2
@@ -14,7 +14,8 @@ class T5Classifier(torch.nn.Module):
         self._num_labels = num_labels
         self._transformer = T5ForConditionalGeneration.from_pretrained('t5-base') if t5 is None else t5
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='left', model_max_length=512)
-        self._optim = optimizer(self.parameters())
+        self._opt_factory = parameterfree.COCOB if opt_factory is None else opt_factory
+        self._optim = self._opt_factory(self.parameters())
         self._decoder_input_ids = self._tokenizer(["["], return_tensors='pt').input_ids
         self._one, self._two = self._tokenizer(["1"]).input_ids[0][0], self._tokenizer(["2"]).input_ids[0][0]
 
@@ -26,12 +27,13 @@ class T5Classifier(torch.nn.Module):
         logits = self._transformer(**enc, decoder_input_ids=decoder_input_ids).logits[:,-1,[self._one,self._two]]
         return F.log_softmax(logits, dim=1) if self._num_labels > 1 else logits
 
-    def clone(self):
-        other = T5Classifier(self._num_labels)
-        other.load_state_dict(self.state_dict())
-        other._optim = optimizer(other.parameters())
-        other._optim.load_state_dict(self._optim.state_dict())
-        return other
+    # TODO: doesn't work with custom T5
+    #def clone(self):
+    #    other = T5Classifier(self._num_labels, opt_factory=self._opt_factory)
+    #    other.load_state_dict(self.state_dict())
+    #    other._optim = other._opt_factory(other.parameters())
+    #    other._optim.load_state_dict(self._optim.state_dict())
+    #    return other
 
     def predict(self, x):
         self.eval()
@@ -65,10 +67,10 @@ class T5Classifier(torch.nn.Module):
             return loss.item()
 
 class PeftT5Classifier(T5Classifier):
-    def __init__(self, num_labels, peft_config, *, t5=None):
+    def __init__(self, num_labels, peft_config, *, t5=None, opt_factory=None):
         from peft import get_peft_model
 
-        super().__init__(num_labels, t5=t5)
+        super().__init__(num_labels, t5=t5, opt_factory=opt_factory)
         self._peft_config = peft_config
         self._transformer = get_peft_model(self._transformer, self._peft_config)
         self._optim = optimizer(self.parameters())
