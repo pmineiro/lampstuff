@@ -1,3 +1,4 @@
+bitsandbytes
 jupyter
 more_itertools
 parameterfree
