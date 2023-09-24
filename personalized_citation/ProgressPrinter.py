@@ -27,19 +27,20 @@ class ProgressPrinter(object):
             self.print()
 
     def print(self):
-        import time
+        if any(self.nsincelast):
+            import time
 
-        end = time.time()
+            end = time.time()
 
-        print(' '.join([ f'{self.cnt:<{self.width}d}' ] +
-                       [ f'{v:{self.width}.3g}'
-                         for n, s in enumerate(self.rawheader)
-                         for v in (self.sum[n]/max(1,self.n[n]), self.sincelast[n]/max(1,self.nsincelast[n]),)
-                       ] +
-                       [ f'{v:{self.width}.3g}' for v in (end - self.start, ) ]),
-              flush=True)
-        self.nsincelast = [0] * len(self.rawheader)
-        self.sincelast = [0] * len(self.sincelast)
+            print(' '.join([ f'{self.cnt:<{self.width}d}' ] +
+                           [ f'{v:{self.width}.3g}'
+                             for n, s in enumerate(self.rawheader)
+                             for v in (self.sum[n]/max(1,self.n[n]), self.sincelast[n]/max(1,self.nsincelast[n]),)
+                           ] +
+                           [ f'{v:{self.width}.3g}' for v in (end - self.start, ) ]),
+                  flush=True)
+            self.nsincelast = [0] * len(self.rawheader)
+            self.sincelast = [0] * len(self.sincelast)
 
     def __enter__(self):
         import time
