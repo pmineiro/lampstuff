@@ -8,25 +8,22 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 class GPT2Classifier(nn.Module):
     def __init__(self, num_labels, *, gpt2=None, opt_factory=None):
         super().__init__()
+        assert num_labels == 2
         assert num_labels == int(num_labels) and num_labels >= 1
         self._num_labels = num_labels
         self._transformer = AutoModelForCausalLM.from_pretrained('gpt2') if gpt2 is None else gpt2
-        hdim = getattr(self._transformer.config, 'n_embd', False) or getattr(self._transformer.config, 'hidden_size')
-        self._score = nn.Linear(hdim, self._num_labels, bias=(self._num_labels==1))
-        with torch.no_grad(): self._score.weight.fill_(0)
-        self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='right')
+        self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='left')
         self._tokenizer.pad_token = self._tokenizer.eos_token
         self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
         self._opt_factory = parameterfree.COCOB if opt_factory is None else opt_factory
         self._optim = self._opt_factory(self.parameters())
+        self._one, self._two = self._tokenizer(["1"]).input_ids[0][0], self._tokenizer(["2"]).input_ids[0][0]
 
     def forward(self, data):
-        inputs = self._tokenizer(data, return_tensors='pt', padding=True).to(self._transformer.device)
-        embeddings = self._transformer(**inputs, output_hidden_states=True).hidden_states[-1]
-        scores = self._score(embeddings.float())
-        first_zero = inputs['attention_mask'].sum(dim=-1)
-        logits = scores[range(scores.shape[0]), first_zero - 1]
-        return F.log_softmax(logits, dim=1) if self._num_labels > 1 else logits
+        megadata = [ d + ' [' for d in data ]
+        inputs = self._tokenizer(megadata, return_tensors='pt', padding='longest')
+        dev_inputs = inputs.to(self._transformer.device)
+        return torch.nn.functional.log_softmax(self._transformer(**dev_inputs).logits[:, -1, [ self._one, self._two ] ], dim=1)
 
     # TODO: doesn't work with custom gpt2
     #def clone(self):
