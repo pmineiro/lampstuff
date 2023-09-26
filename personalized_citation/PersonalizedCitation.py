@@ -58,8 +58,7 @@ class DataLoader(object):
         self._batch_size = batch_size
         self._max_index = inf if max_index is None else max_index
         assert self._max_index >= self._batch_size
-        self._embeddings = {}
-        self._embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        self._embedder = SentenceTransformer('all-mpnet-base-v2')
 
     @property
     def num_labels(self):
