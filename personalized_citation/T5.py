@@ -23,8 +23,8 @@ class T5Classifier(torch.nn.Module):
         enc = self._tokenizer(data, return_tensors='pt', padding=True).to(self._transformer.device)
         decoder_input_ids = self._decoder_input_ids.expand(enc.input_ids.shape[0], 1)
         embeddings = self._transformer(**enc, decoder_input_ids=decoder_input_ids).encoder_last_hidden_state[:,-1,:]
-        logits = self._score(embeddings)
-        return F.log_softmax(logits, dim=1) if self._num_labels > 1 else logits
+        outputs = self._score(embeddings)
+        return F.log_softmax(outputs, dim=1) if self._num_labels > 1 else outputs
 
     # TODO: doesn't work with custom T5
     #def clone(self):

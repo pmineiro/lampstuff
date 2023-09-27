@@ -65,12 +65,15 @@ class T5Classifier(torch.nn.Module):
             return loss.item()
 
 class PeftT5Classifier(T5Classifier):
-    def __init__(self, num_labels, peft_config, *, t5=None, opt_factory=None):
-        from peft import get_peft_model
+    def __init__(self, num_labels, peft_config, *, t5=None, opt_factory=None, model_id=None):
+        from peft import get_peft_model, PeftModel
 
         super().__init__(num_labels, t5=t5, opt_factory=opt_factory)
         self._peft_config = peft_config
-        self._transformer = get_peft_model(self._transformer, self._peft_config)
+        if model_id is None:
+            self._transformer = get_peft_model(self._transformer, self._peft_config)
+        else:
+            self._transformer = PeftModel.from_pretrained(self._transformer, model_id)
         self._optim = self._opt_factory(self.parameters())
 
     def clone(self):
@@ -81,3 +84,7 @@ class PeftT5Classifier(T5Classifier):
         other._optim.load_state_dict(self._optim.state_dict())
 
         return other
+
+    def save_pretrained(self, model_id):
+        self._transformer.save_pretrained(model_id)
+        self._tokenizer.save_pretrained(model_id)

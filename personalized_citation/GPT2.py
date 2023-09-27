@@ -25,8 +25,8 @@ class GPT2Classifier(nn.Module):
         embeddings = self._transformer(**inputs, output_hidden_states=True).hidden_states[-1]
         scores = self._score(embeddings.float())
         first_zero = inputs['attention_mask'].sum(dim=-1)
-        logits = scores[range(scores.shape[0]), first_zero - 1]
-        return F.log_softmax(logits, dim=1) if self._num_labels > 1 else logits
+        outputs = scores[range(scores.shape[0]), first_zero - 1]
+        return F.log_softmax(outputs, dim=1) if self._num_labels > 1 else outputs
 
     # TODO: doesn't work with custom gpt2
     #def clone(self):
