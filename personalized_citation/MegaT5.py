@@ -2,7 +2,7 @@ import parameterfree
 import torch
 
 class T5Classifier(torch.nn.Module):
-    def __init__(self, num_labels, *, t5=None, opt_factory=None):
+    def __init__(self, num_labels, *, t5=None, opt_factory=None, model_id=None):
         from transformers import T5ForConditionalGeneration, AutoTokenizer
 
         assert num_labels == 2
@@ -10,7 +10,7 @@ class T5Classifier(torch.nn.Module):
         super().__init__()
         assert num_labels == int(num_labels) and num_labels >= 1
         self._num_labels = num_labels
-        self._transformer = T5ForConditionalGeneration.from_pretrained('t5-base') if t5 is None else t5
+        self._transformer = T5ForConditionalGeneration.from_pretrained('t5-base' if model_id is None else model_id) if t5 is None else t5
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, use_fast=True, padding_side='left', model_max_length=512)
         self._opt_factory = parameterfree.COCOB if opt_factory is None else opt_factory
         self._optim = self._opt_factory(self.parameters())
@@ -64,11 +64,15 @@ class T5Classifier(torch.nn.Module):
             self._optim.step()
             return loss.item()
 
+    def save_pretrained(self, model_id):
+        self._transformer.save_pretrained(model_id)
+        self._tokenizer.save_pretrained(model_id)
+
 class PeftT5Classifier(T5Classifier):
     def __init__(self, num_labels, peft_config, *, t5=None, opt_factory=None, model_id=None):
         from peft import get_peft_model, PeftModel
 
-        super().__init__(num_labels, t5=t5, opt_factory=opt_factory)
+        super().__init__(num_labels, t5=t5, opt_factory=opt_factory) # NB: no model_id here
         self._peft_config = peft_config
         if model_id is None:
             self._transformer = get_peft_model(self._transformer, self._peft_config)
@@ -84,7 +88,3 @@ class PeftT5Classifier(T5Classifier):
         other._optim.load_state_dict(self._optim.state_dict())
 
         return other
-
-    def save_pretrained(self, model_id):
-        self._transformer.save_pretrained(model_id)
-        self._tokenizer.save_pretrained(model_id)
