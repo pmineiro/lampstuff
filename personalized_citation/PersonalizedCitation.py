@@ -21,7 +21,23 @@ def download_and_compress(url):
 
 class DataLoader(object):
     @staticmethod
-    def _augment_examples(exs):
+    def _augment_data(exs, labels):
+        from copy import deepcopy
+        import re
+
+        extra = []
+        for ex in exs:
+            newex = deepcopy(ex)
+            m = re.search(r'^(.*without explanation.) \[1\]: "(.*?)" \[2\]: "(.*)"(.*)$', newex['input'])
+            newex['input'] = m.group(1) + ' [1]: "' + m.group(3) + '" [2]: "' + m.group(2) + '"' + m.group(4)
+            newex['id'] = f"swapped{ex['id']}"
+            labels[newex['id']] = "[2]" if labels[ex['id']] == "[1]" else "[1]"
+            extra.append(newex)
+
+        exs.extend(extra)
+
+    @staticmethod
+    def _annotate_examples(exs):
         import re
 
         for n, ex in enumerate(exs):
@@ -32,7 +48,7 @@ class DataLoader(object):
             ex['ref1'] = m.group(1)
             ex['ref2'] = m.group(2)
 
-    def __init__(self, batch_size, *, split, max_index):
+    def __init__(self, batch_size, *, split, max_index, double_data=False):
         import gzip
         import json
         import os
@@ -52,7 +68,10 @@ class DataLoader(object):
 
         with gzip.open(f'{split}_questions.json.gz', 'r') as fin:
             self._ds = json.loads(fin.read().decode('utf-8'))
-            self._augment_examples(self._ds)
+            self._double_data = double_data
+            if self._double_data:
+                self._augment_data(self._ds, self._labels)
+            self._annotate_examples(self._ds)
 
         self._num_classes = 2
         self._batch_size = batch_size
@@ -101,8 +120,8 @@ class DataLoader(object):
 
         return items()
 
-def train_loader(batch_size, *, max_index=None):
-    return DataLoader(batch_size, split='train', max_index=max_index)
+def train_loader(batch_size, *, max_index=None, double_data=False):
+    return DataLoader(batch_size, split='train', max_index=max_index, double_data=double_data)
 
-def dev_loader(batch_size, *, max_index=None):
-    return DataLoader(batch_size, split='dev', max_index=max_index)
+def dev_loader(batch_size, *, max_index=None, double_data=False):
+    return DataLoader(batch_size, split='dev', max_index=max_index, double_data=double_data)
