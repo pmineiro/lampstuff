@@ -118,7 +118,6 @@ class DataLoader(object):
         m = re.match(r'^(.*?the title )(".*?")(, which reference.*)', example['input'])
         return m.group(1) + m.group(2) + f' and {stuff}' + m.group(3)
                    
-
     def __iter__(self):
         def items():
             from more_itertools import chunked
