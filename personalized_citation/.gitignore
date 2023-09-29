@@ -2,5 +2,5 @@
 *.swp
 .ipynb_checkpoints/
 __pycache__/
-User_keq?_t5base_step1/
-User_keq?_t5base_step?_rankeq*/
+User_keq?_t5*_step1/
+User_keq?_t5*_step?_rankeq*/
