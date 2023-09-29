@@ -37,6 +37,17 @@ class DataLoader(object):
         exs.extend(extra)
 
     @staticmethod
+    def swap_refs(inputs):
+        import re
+
+        swapped = []
+        for orig in inputs:
+            m = re.search(r'^(.*without explanation.) \[1\]: "(.*?)" \[2\]: "(.*)"(.*)$', orig)
+            swapped.append(m.group(1) + ' [1]: "' + m.group(3) + '" [2]: "' + m.group(2) + '"' + m.group(4))
+
+        return swapped
+
+    @staticmethod
     def _annotate_examples(exs):
         import re
 
