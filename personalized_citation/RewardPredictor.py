@@ -73,3 +73,25 @@ class RewardPredictor(torch.nn.Module):
         self._transformer.save_pretrained(model_id)
         self._tokenizer.save_pretrained(model_id)
         torch.save(self._score.state_dict(), f'{model_id}/score_layer.pth')
+
+    def clone(self):
+        import re
+
+        assert self._adapter_name, 'cannot clone unless the base model is frozen'
+
+        num_configs = len(self._transformer.peft_config)
+
+        new_adapter_name = self._adapter_name
+        if not re.search(r'_clone(\d+)$', new_adapter_name):
+            new_adapter_name += f'_clone{num_configs+1:04d}'
+        else:
+            new_adapter_name = re.sub(r'_clone(\d+)$', fr'_clone{num_configs+1:04d}', new_adapter_name)
+
+        new_config = self._transformer.peft_config[self._adapter_name]
+        self._transformer.add_adapter(new_config, new_adapter_name)
+
+        other = type(self)(t5=self._transformer, opt_factory=self._opt_factory, adapter_name=new_adapter_name)
+        other._score.load_state_dict(self._score.state_dict())
+        other._optim = other._opt_factory(other.parameters())
+
+        return other
