@@ -66,13 +66,16 @@ class DataLoader(object):
         from math import inf
         from sentence_transformers import SentenceTransformer
 
-        if not os.path.isfile(f'{split}_outputs.json.gz'):
-            download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_outputs.json')
+        if split != 'test':
+            if not os.path.isfile(f'{split}_outputs.json.gz'):
+                download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_outputs.json')
 
-        with gzip.open(f'{split}_outputs.json.gz', 'r') as fin:
-            data = json.loads(fin.read().decode('utf-8'))
-            assert data['task'] == 'LaMP_1'
-            self._labels = { v['id']:v['output'] for v in data['golds']}
+            with gzip.open(f'{split}_outputs.json.gz', 'r') as fin:
+                data = json.loads(fin.read().decode('utf-8'))
+                assert data['task'] == 'LaMP_1'
+                self._labels = { v['id']:v['output'] for v in data['golds']}
+        else:
+            self._labels = None
 
         if not os.path.isfile(f'{split}_questions.json.gz'):
             download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_questions.json')
@@ -125,7 +128,8 @@ class DataLoader(object):
 
             for batch in chunked(torch.randperm(self.num_examples, device='cpu').tolist(), self._batch_size):
                 examples = [ ex for ind in batch for ex in (self._ds[ind],) ]
-                labels = [ self._labels[ex['id']] for ind in batch for ex in (self._ds[ind],) ]
+                labels = [ self._labels[ex['id']] for ind in batch for ex in (self._ds[ind],) ] if self._labels else [None]*len(examples)
+
                 yield (examples, labels)
 
         return items()
@@ -135,3 +139,6 @@ def train_loader(batch_size, *, max_index=None, double_data=False):
 
 def dev_loader(batch_size, *, max_index=None, double_data=False):
     return DataLoader(batch_size, split='dev', max_index=max_index, double_data=double_data)
+
+def test_loader(batch_size, *, max_index=None):
+    return DataLoader(batch_size, split='test', max_index=max_index)
