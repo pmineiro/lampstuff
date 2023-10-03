@@ -1,11 +1,15 @@
-def download_and_compress(url):
+def download_and_compress(url, *, timesplit=False):
     import gzip
+    import re
     import requests
     from urllib.parse import urlparse, unquote
     from tqdm import tqdm
 
     filename = unquote(urlparse(url).path.split("/")[-1])
     filename += '.gz'
+    if timesplit:
+        filename = f'time_{filename}'
+        url = re.sub(r'downloads/LaMP/', r'downloads/LaMP/time/', url)
 
     # Streaming, so we can iterate over the response.
     response = requests.get(url, stream=True)
@@ -59,28 +63,30 @@ class DataLoader(object):
             ex['ref1'] = m.group(1)
             ex['ref2'] = m.group(2)
 
-    def __init__(self, batch_size, *, split, max_index, double_data=False):
+    def __init__(self, batch_size, *, split, max_index, timesplit, double_data=False):
         import gzip
         import json
         import os
         from math import inf
         from sentence_transformers import SentenceTransformer
 
-        if split != 'test':
-            if not os.path.isfile(f'{split}_outputs.json.gz'):
-                download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_outputs.json')
+        extra = "time_" if timesplit else ""
 
-            with gzip.open(f'{split}_outputs.json.gz', 'r') as fin:
+        if split != 'test':
+            if not os.path.isfile(f'{extra}{split}_outputs.json.gz'):
+                download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_outputs.json', timesplit=timesplit)
+
+            with gzip.open(f'{extra}{split}_outputs.json.gz', 'r') as fin:
                 data = json.loads(fin.read().decode('utf-8'))
                 assert data['task'] == 'LaMP_1'
                 self._labels = { v['id']:v['output'] for v in data['golds']}
         else:
             self._labels = None
 
-        if not os.path.isfile(f'{split}_questions.json.gz'):
-            download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_questions.json')
+        if not os.path.isfile(f'{extra}{split}_questions.json.gz'):
+            download_and_compress(f'https://ciir.cs.umass.edu/downloads/LaMP/LaMP_1/{split}/{split}_questions.json', timesplit=timesplit)
 
-        with gzip.open(f'{split}_questions.json.gz', 'r') as fin:
+        with gzip.open(f'{extra}{split}_questions.json.gz', 'r') as fin:
             self._ds = json.loads(fin.read().decode('utf-8'))
             self._double_data = double_data
             if self._double_data:
@@ -134,11 +140,11 @@ class DataLoader(object):
 
         return items()
 
-def train_loader(batch_size, *, max_index=None, double_data=False):
-    return DataLoader(batch_size, split='train', max_index=max_index, double_data=double_data)
+def train_loader(batch_size, *, max_index=None, double_data=False, timesplit=False):
+    return DataLoader(batch_size, split='train', max_index=max_index, double_data=double_data, timesplit=timesplit)
 
-def dev_loader(batch_size, *, max_index=None, double_data=False):
-    return DataLoader(batch_size, split='dev', max_index=max_index, double_data=double_data)
+def dev_loader(batch_size, *, max_index=None, double_data=False, timesplit=False):
+    return DataLoader(batch_size, split='dev', max_index=max_index, double_data=double_data, timesplit=timesplit)
 
-def test_loader(batch_size, *, max_index=None):
-    return DataLoader(batch_size, split='test', max_index=max_index)
+def test_loader(batch_size, *, max_index=None, timesplit=False):
+    return DataLoader(batch_size, split='test', max_index=max_index, timesplit=timesplit)
