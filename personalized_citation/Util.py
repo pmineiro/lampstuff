@@ -6,7 +6,7 @@ def interleave(a, b):
     aelem, belem = next(aiter), next(biter)
     anum, bnum = 1, 1
 
-    while anum != inf and bnum != inf:
+    while anum != inf or bnum != inf:
         if anum * btot <= bnum * atot:
             yield (True, aelem)
             try:
