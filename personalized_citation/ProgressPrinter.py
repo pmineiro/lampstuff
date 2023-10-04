@@ -4,6 +4,16 @@ class ProgressPrinter(object):
         self.rawheader = header
         self.width = max(9, max(len(h) for h in self.rawheader))
         self.autoprint = True
+        self.extra = None
+
+    @property
+    def extra(self):
+        return self._extra
+
+    @extra.setter
+    def extra(self, val):
+        self._extra = val
+        return self._extra
 
     @property
     def autoprint(self):
@@ -41,6 +51,9 @@ class ProgressPrinter(object):
                   flush=True)
             self.nsincelast = [0] * len(self.rawheader)
             self.sincelast = [0] * len(self.sincelast)
+
+            if callable(self.extra):
+                self.extra()
 
     def __enter__(self):
         import time
