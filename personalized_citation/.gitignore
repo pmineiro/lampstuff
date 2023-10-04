@@ -1,5 +1,4 @@
 *.json.gz
-*.json
 *.swp
 .ipynb_checkpoints/
 __pycache__/
