@@ -56,6 +56,6 @@ import contextlib
 def BadPipe():
     import sys
     save = sys.__stderr__
-    sys.__stderr__ = None
+    sys.__stderr__ = Filter(sys.__stderr__, r'Bad pipe message|\[b')
     yield
     sys.__stderr__ = save
