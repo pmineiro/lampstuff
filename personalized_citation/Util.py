@@ -50,3 +50,12 @@ class Filter(object):
 
     def flush(self):
         self.stream.flush()
+
+import contextlib
+@contextlib.contextmanager
+def BadPipe():
+    import sys
+    save = sys.__stderr__
+    sys.__stderr__ = None
+    yield
+    sys.__stderr__ = save
