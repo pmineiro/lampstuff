@@ -7,4 +7,4 @@ pyskiplist
 scipy
 sentence_transformers
 torch==2.0.1
-transformers
+transformers==4.33.3
