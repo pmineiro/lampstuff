@@ -20,12 +20,16 @@ def SimpleRegretHypercubeSampler(fhat, gamma):
     from math import sqrt
     import torch
 
-    fhatahats, ahats = fhat.topk(k=2, dim=1)
     A = fhat.shape[1]
-    gamma *= sqrt(A)
 
-    fhat -= fhatahats[:,[0]]
-    maxterm = torch.clamp(2 + gamma * fhatahats[:,[1]], min=0, max=None)
-    z = 1 / (-1 - gamma * fhat + maxterm)
-    z[range(z.shape[0]), ahats[:,0]] = 0
-    return ahats[:,0], torch.bernoulli(z)
+    if A == 1:
+        return (torch.zeros_like(fhat).long(),)
+    else:
+        fhatahats, ahats = fhat.topk(k=2, dim=1)
+        gamma *= sqrt(A)
+
+        fhat -= fhatahats[:,[0]]
+        maxterm = torch.clamp(2 + gamma * fhatahats[:,[1]], min=0, max=None)
+        z = 1 / (-1 - gamma * fhat + maxterm)
+        z[range(z.shape[0]), ahats[:,0]] = 0
+        return ahats[:,0], torch.bernoulli(z)
