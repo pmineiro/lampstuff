@@ -1,26 +1,30 @@
-def interleave(a, b):
-    from math import inf
-    
-    atot, btot = a.num_examples, b.num_examples
-    aiter, biter = a.__iter__(), b.__iter__()
-    aelem, belem = next(aiter), next(biter)
-    anum, bnum = 1, 1
+def interleave(a, b, *, sequential=False):
+    if sequential:
+        yield from ( (True, v) for v in a )
+        yield from ( (False, v) for v in b )
+    else:
+        from math import inf
 
-    while anum != inf or bnum != inf:
-        if anum * btot <= bnum * atot:
-            yield (True, aelem)
-            try:
-                aelem = next(aiter)
-                anum += 1
-            except StopIteration:
-                anum = inf
-        else:
-            yield (False, belem)
-            try:
-                belem = next(biter)
-                bnum += 1
-            except StopIteration:
-                bnum = inf
+        atot, btot = a.num_examples, b.num_examples
+        aiter, biter = a.__iter__(), b.__iter__()
+        aelem, belem = next(aiter), next(biter)
+        anum, bnum = 1, 1
+
+        while anum != inf or bnum != inf:
+            if anum * btot <= bnum * atot:
+                yield (True, aelem)
+                try:
+                    aelem = next(aiter)
+                    anum += 1
+                except StopIteration:
+                    anum = inf
+            else:
+                yield (False, belem)
+                try:
+                    belem = next(biter)
+                    bnum += 1
+                except StopIteration:
+                    bnum = inf
 
 class Filter(object):
     def __init__(self, stream, re_pattern):

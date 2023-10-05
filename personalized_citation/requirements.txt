@@ -6,5 +6,5 @@ peft
 pyskiplist
 scipy
 sentence_transformers
-torch
+torch==2.0.1
 transformers
