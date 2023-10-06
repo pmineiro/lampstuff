@@ -2,7 +2,7 @@ class ProgressPrinter(object):
     def __init__(self, *header):
         super().__init__()
         self.rawheader = header
-        self.width = max(9, max(len(h) for h in self.rawheader))
+        self.width = max(14, max(len(h) + 8 for h in self.rawheader))
         self.autoprint = True
         self.extra = None
 
@@ -36,18 +36,32 @@ class ProgressPrinter(object):
         if self.autoprint and self.cnt and (self.cnt & (self.cnt - 1)) == 0:
             self.print()
 
+    def format_time(self, dt):
+        if dt < 1:
+            return f'{1000*dt:>4.3g} ms'
+        elif dt < 60:
+            return f'{dt:>5.3g} s'
+        elif dt < 60 * 60:
+            return f'{dt/60:>5.3g} m'
+        elif dt < 24 * 60 * 60:
+            return f'{dt/(60*60):>5.3g} h'
+        elif dt < 7 * 24 * 60 * 60:
+            return f'{dt/(24*60*60):>5.3g} d'
+        else:
+            return f'{dt/(7*24*60*60):>5.3g} w'
+
     def print(self):
         if any(self.nsincelast):
             import time
 
             end = time.time()
 
-            print(' '.join([ f'{self.cnt:<{self.width}d}' ] +
-                           [ f'{v:{self.width}.3g}'
+            print(' '.join([ f'{self.cnt:<7d}' ] +
+                           [ f'{v[0]:{self.width-8}.3g} ({v[1]:5.3g})'
                              for n, s in enumerate(self.rawheader)
-                             for v in (self.sum[n]/max(1,self.n[n]), self.sincelast[n]/max(1,self.nsincelast[n]),)
+                             for v in ((self.sum[n]/max(1,self.n[n]), self.sincelast[n]/max(1,self.nsincelast[n]),),)
                            ] +
-                           [ f'{v:{self.width}.3g}' for v in (end - self.start, ) ]),
+                           [ self.format_time(end - self.start) ]),
                   flush=True)
             self.nsincelast = [0] * len(self.rawheader)
             self.sincelast = [0] * len(self.sincelast)
@@ -58,8 +72,8 @@ class ProgressPrinter(object):
     def __enter__(self):
         import time
 
-        self.fullheader = ['n'] + [ h for what in self.rawheader for h in (what, 'since',) ] + ['dt (s)']
-        print(' '.join([ f'{h:<{self.width}s}' if n == 0 else f'{h:>{self.width}s}' for n, h in enumerate(self.fullheader) ]), flush=True)
+        self.fullheader = ['n'] + [ f'{what} (since)' for what in self.rawheader ] + ['dt']
+        print(' '.join([ f'{h:<7s}' if n == 0 else f'{h:>7s}' if h == 'dt' else f'{h:>{self.width}s}' for n, h in enumerate(self.fullheader) ]), flush=True)
         self.cnt = 0
         self.n = [0] * len(self.rawheader)
         self.sum = [0] * len(self.rawheader)

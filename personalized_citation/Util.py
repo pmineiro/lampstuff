@@ -41,7 +41,7 @@ class Filter(object):
         if data == '\n' and self.triggered:
             self.triggered = False
         else:
-            if self.pattern.search(data) is None:
+            if len(data) and self.pattern.search(data) is None:
                 self.stream.write(data)
                 self.stream.flush()
             else:
