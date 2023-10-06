@@ -55,8 +55,8 @@ import contextlib
 @contextlib.contextmanager
 def BadPipe():
     import sys
-    save = sys.__stderr__
-    if sys.__stderr__:
-        sys.__stderr__ = Filter(sys.__stderr__, r'Bad pipe message|\[b')
+    save = (sys.stderr, sys.__stderr__)
+    sys.stderr = Filter(sys.stderr, r'Bad pipe message|\[b') if sys.stderr else None
+    sys.__stderr__ = Filter(sys.__stderr__, r'Bad pipe message|\[b') if sys.__stderr__ else None
     yield
-    sys.__stderr__ = save
+    sys.stderr, sys.__stderr__ = save
