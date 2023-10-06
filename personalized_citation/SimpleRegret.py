@@ -30,6 +30,6 @@ def SimpleRegretHypercubeSampler(fhat, gamma):
 
         fhat -= fhatahats[:,[0]]
         maxterm = torch.clamp(2 + gamma * fhatahats[:,[1]], min=0, max=None)
-        z = 1 / (-1 - gamma * fhat + maxterm)
+        z = 1 / torch.clamp(-1 - gamma * fhat + maxterm, min=1)
         z[range(z.shape[0]), ahats[:,0]] = 0
         return ahats[:,0], torch.bernoulli(z)
