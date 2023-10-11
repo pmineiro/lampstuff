@@ -29,9 +29,9 @@ class DataLoader(object):
         import re
 
         for n, ex in enumerate(exs):
-            # TODO
-            m = re.search(r'For an author who has written the paper with the title "(.*?)", which reference is related?', ex['input'])
-            ex['review'] = m.group(1)
+            m = re.search(r'What is the score of the following review on a scale of 1 to 5\? just answer with 1, 2, 3, 4, or 5 without further explanation. review: ',
+                          ex['input'])
+            ex['review'] = ex['input'][m.end():]
             ex['dsind'] = n
 
     def __init__(self, batch_size, *, split, max_index, timesplit):
@@ -89,10 +89,17 @@ class DataLoader(object):
         normalized = torch.nn.functional.normalize(embeddings)
         return normalized
 
-    def prepend_to_prompt(self, example, profile_examples):
-        preamble = ', and '.join([ f'{profex["score"]} is the score for "{profex["text"]}"' for profex in profile_examples ])
-        return f'{premable}\n{example["input"]}'
-                   
+    @staticmethod
+    def prepend_to_prompt(example, profile_examples):
+        # TODO: number of characters >= number of tokens, so this truncation is conservative
+
+        maxlen = 256 // min(1, len(profile_examples))
+        preamble = ', and '.join([ f'{profex["score"]} is the score for "{text:.{maxlen-6}s}"' 
+                                   for profex in profile_examples 
+                                   for text in (' '.join(profex["text"].split()),)
+                                 ])
+        return f'{preamble}\n\n{example["input"]}'
+
     def __iter__(self):
         def items():
             from more_itertools import chunked
