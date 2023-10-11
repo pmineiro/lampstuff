@@ -57,7 +57,7 @@ class ProgressPrinter(object):
             end = time.time()
 
             print(' '.join([ f'{self.cnt:<7d}' ] +
-                           [ f'{v[0]:{self.width-8}.3g} ({v[1]:5.3g})'
+                           [ f'{v[0]:{self.width-8}.3f} ({v[1]:4.3f})'
                              for n, s in enumerate(self.rawheader)
                              for v in ((self.sum[n]/max(1,self.n[n]), self.sincelast[n]/max(1,self.nsincelast[n]),),)
                            ] +
