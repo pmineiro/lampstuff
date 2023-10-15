@@ -34,7 +34,7 @@ class DataLoader(object):
             ex['review'] = ex['input'][m.end():]
             ex['dsind'] = n
 
-    def __init__(self, batch_size, *, split, max_index, timesplit):
+    def __init__(self, batch_size, *, split, max_index, timesplit, augment=False):
         import gzip
         import json
         import os
@@ -66,14 +66,19 @@ class DataLoader(object):
         self._max_index = inf if max_index is None else max_index
         assert self._max_index >= self._batch_size
         self._embedder = SentenceTransformer('all-mpnet-base-v2')
+        self._augment = augment
 
     @property
     def num_labels(self):
         return self._num_classes
 
     @property
-    def num_examples(self):
+    def num_raw_examples(self):
         return min(self._max_index, len(self._ds))
+
+    @property
+    def num_examples(self):
+        return self.num_raw_examples * (2 if self._augment else 1)
 
     @property
     def choices(self):
@@ -94,27 +99,63 @@ class DataLoader(object):
         # TODO: number of characters >= number of tokens, so this truncation is conservative
 
         maxlen = 256 // min(1, len(profile_examples))
-        preamble = ', and '.join([ f'{profex["score"]} is the score for "{text:.{maxlen-6}s}"' 
-                                   for profex in profile_examples 
+        preamble = ', and '.join([ f'{profex["score"]} is the score for "{text:.{maxlen-6}s}"'
+                                   for profex in profile_examples
                                    for text in (' '.join(profex["text"].split()),)
                                  ])
         return f'{preamble}\n\n{example["input"]}'
+
+    def rewrite_input(self, ex, newreview):
+        import re
+
+        try:
+            m = re.match(
+                  r'(^What is the score of the following review on a scale of 1 to 5\? just answer with 1, 2, 3, 4, or 5 without further explanation. review: )(.*)$',
+                  ex['input'],
+                  re.DOTALL)
+            ex['input'] = m.group(1) + newreview
+        except:
+            print(f'wtf {ex["input"]}')
+            raise
+
+    def swap_with_profile(self, ex):
+        from copy import deepcopy
+        import torch
+
+        profs = [ (n, v) for n, v in enumerate(ex['profile']) if v['text'] != ex['review'] ]
+        nprof = len(profs)
+        if nprof and self._labels:
+            rawindex = torch.randint(high=nprof, size=(1,), device='cpu').item()
+            index = profs[rawindex][0]
+            copyex = deepcopy(ex)
+            copyex['review'] = ex['profile'][index]['text']
+            self.rewrite_input(copyex, copyex['review'])
+            copyex['profile'][index]['text'] = ex['review']
+            copyex['profile'][index]['score'] = self._labels[ex['id']]
+            label = ex['profile'][index]['score']
+            return copyex, label
+        else:
+            return None
 
     def __iter__(self):
         def items():
             from more_itertools import chunked
             import torch
 
-            for batch in chunked(torch.randperm(self.num_examples, device='cpu').tolist(), self._batch_size):
+            for batch in chunked(torch.randperm(self.num_raw_examples, device='cpu').tolist(), self._batch_size):
                 examples = [ ex for ind in batch for ex in (self._ds[ind],) ]
-                labels = [ self._labels[ex['id']] for ind in batch for ex in (self._ds[ind],) ] if self._labels else [None]*len(examples)
+                labels = [ self._labels[ex['id']] for ex in examples ] if self._labels else [None]*len(examples)
+                if self._augment:
+                    moreexamples, morelabels = zip(*[ v for ex in examples for v in (self.swap_with_profile(ex),) if v is not None ])
+                    examples.extend(moreexamples)
+                    labels.extend(morelabels)
 
                 yield (examples, labels)
 
         return items()
 
-def train_loader(batch_size, *, max_index=None, timesplit=False):
-    return DataLoader(batch_size, split='train', max_index=max_index, timesplit=timesplit)
+def train_loader(batch_size, *, max_index=None, timesplit=False, augment=False):
+    return DataLoader(batch_size, split='train', max_index=max_index, timesplit=timesplit, augment=augment)
 
 def dev_loader(batch_size, *, max_index=None, timesplit=False):
     return DataLoader(batch_size, split='dev', max_index=max_index, timesplit=timesplit)
