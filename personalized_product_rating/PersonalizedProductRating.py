@@ -98,7 +98,7 @@ class DataLoader(object):
     def prepend_to_prompt(example, profile_examples):
         # TODO: number of characters >= number of tokens, so this truncation is conservative
 
-        maxlen = 256 // min(1, len(profile_examples))
+        maxlen = 512 // max(2, len(profile_examples))
         preamble = ', and '.join([ f'{profex["score"]} is the score for "{text:.{maxlen-6}s}"'
                                    for profex in profile_examples
                                    for text in (' '.join(profex["text"].split()),)
