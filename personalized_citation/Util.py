@@ -60,3 +60,15 @@ def BadPipe():
     sys.__stderr__ = Filter(sys.__stderr__, r'Bad pipe message|\[b|^\s+$') if sys.__stderr__ else None
     yield
     sys.stderr, sys.__stderr__ = save
+
+from pathlib import Path
+import os
+
+@contextlib.contextmanager
+def set_directory(path: Path):
+    origin = Path().absolute()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(origin)

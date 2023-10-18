@@ -1,8 +1,13 @@
 #! /usr/bin/env python
 
+import sys
+sys.path.insert(0, '.')
+
 import argparse
 from contextlib import redirect_stdout
 from json import load, dump
+from pathlib import Path
+from Util import set_directory
 
 parser = argparse.ArgumentParser(description='Run a notebook cell at the terminal.')
 parser.add_argument('filename', help='notebook to run')
@@ -22,6 +27,9 @@ class Logger(object):
         self.terminal.write(message)
         self.log.append(message)  
 
+    def flush(self):
+        self.terminal.flush()
+
     def nicelog(self):
         for a, b in zip(self.log, self.log[1:]):
             if b == '\n':
@@ -29,7 +37,7 @@ class Logger(object):
             elif a != '\n':
                 yield a
 
-        if self.log[-1] != '\n':
+        if self.log and self.log[-1] != '\n':
             yield self.log[-1]
 
 def user_confirm(question: str) -> bool:
@@ -45,16 +53,30 @@ def user_confirm(question: str) -> bool:
 with open(args.filename) as fp:
     nb = load(fp)
 
-for num, cell in enumerate([ v for v in nb['cells'] if v['cell_type'] == 'code']):
-    if num == args.cellnum:
-        source = ''.join(line for line in cell['source'] if not line.startswith('%'))
-        if user_confirm(f'execute {source[:256]} ...'):
-            with redirect_stdout(Logger())as f:
-                exec(source, globals(), locals())
-            outputs = cell.get('outputs', [])
-            outputs.append({ 'name': 'stdout', 'output_type': 'stream', 'text': list(f.nicelog()) })
-            cell['outputs'] = outputs
-            with open(args.out, 'w') as fp:
-                dump(nb, fp)
+num = 0
+for rawnum, cell in enumerate(nb['cells']):
+    if cell['cell_type'] == 'code':
+        num += 1
+        if num == args.cellnum + 1:
+            source = ''.join(line for line in cell['source'] if not line.startswith('%'))
+            sourcelines = source.split('\n')
+            first = '\n'.join(sourcelines[:5])
+            last = '\n'.join(sourcelines[-5:])
+            if user_confirm(f'execute {first}\n...\n{last}\n'):
+                try:
+                    path = Path(args.filename)
+                    log = Logger()
+                    with redirect_stdout(log), set_directory(path.parent):
+                        exec(source, {}, {})
+                finally:
+                    outputs = cell.get('outputs', [])
+                    outputs.append({ 'name': 'stdout', 'output_type': 'stream', 'text': list(log.nicelog()) })
+                    nb['cells'][rawnum]['outputs'] = outputs
+                    
+                    from pprint import pformat
+                    print(pformat(outputs))
+                    print(pformat(log.log))
+                    with open(args.out, 'w') as fp:
+                        dump(nb, fp, indent=2)
 
 # [ {'name': 'stdout', 'output_type': 'stream', 'text': ["",""...] } ]
