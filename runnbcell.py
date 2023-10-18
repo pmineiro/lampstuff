@@ -62,7 +62,7 @@ for rawnum, cell in enumerate(nb['cells']):
             sourcelines = source.split('\n')
             first = '\n'.join(sourcelines[:5])
             last = '\n'.join(sourcelines[-5:])
-            if user_confirm(f'execute {first}\n...\n{last}\n'):
+            if user_confirm(f'execute?\n{first}\n...\n{last}\n'):
                 try:
                     path = Path(args.filename)
                     log = Logger()
