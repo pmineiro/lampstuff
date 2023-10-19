@@ -73,9 +73,6 @@ for rawnum, cell in enumerate(nb['cells']):
                     outputs.append({ 'name': 'stdout', 'output_type': 'stream', 'text': list(log.nicelog()) })
                     nb['cells'][rawnum]['outputs'] = outputs
                     
-                    from pprint import pformat
-                    print(pformat(outputs))
-                    print(pformat(log.log))
                     with open(args.out, 'w') as fp:
                         dump(nb, fp, indent=2)
 
