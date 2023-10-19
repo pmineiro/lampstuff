@@ -34,8 +34,11 @@ class TaskLLM(torch.nn.Module):
         enc = self._tokenizer(data, return_tensors='pt', truncation=True, padding=True).to(self._transformer.device)
         output_sequences = self._transformer.generate(input_ids=enc['input_ids'], 
                                                       attention_mask=enc['attention_mask'], 
-                                                      do_sample=False,
-                                                      max_new_tokens=40)
+                                                      num_beams=4,
+                                                      num_return_sequences=1,
+                                                      no_repeat_ngram_size=1,
+                                                      remove_invalid_values=True,
+                                                      max_new_tokens=80)
 
         return self._tokenizer.batch_decode(output_sequences, skip_special_tokens=True)
 
