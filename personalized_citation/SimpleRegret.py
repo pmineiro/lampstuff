@@ -1,26 +1,3 @@
-def SimpleRegretGreedyDoubleSampler(fhat, gamma):
-    from math import sqrt
-    import torch
-
-    A = fhat.shape[1]
-    assert A >= 1
-
-    if A == 1:
-        exploit = torch.zeros_like(fhat).long()
-        explore = torch.empty(fhat.shape[0], 0, device=fhat.device, dtype=torch.long)
-    else:
-        fhatahats, ahats = fhat.topk(k=2, dim=1)
-        gamma *= sqrt(A)
-
-        z = 1 / ((A - 1) + gamma * torch.clamp(fhatahats[:,[1]] - fhat, min=0, max=None))
-        z[range(z.shape[0]), ahats[:,0]] = 0
-        sumz = z.sum(dim=1)
-        z[range(z.shape[0]), ahats[:,1]] += torch.clamp(1 - sumz, min=0, max=None)
-        exploit = ahats[:,0]
-        explore = torch.multinomial(z, num_samples=1).squeeze(1)
-
-    return exploit, explore
-
 def SimpleRegretHypercubeSampler(fhat, gamma):
     from math import sqrt
     import torch
