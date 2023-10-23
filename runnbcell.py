@@ -75,5 +75,3 @@ for rawnum, cell in enumerate(nb['cells']):
                     
                     with open(args.out, 'w') as fp:
                         dump(nb, fp, indent=2)
-
-# [ {'name': 'stdout', 'output_type': 'stream', 'text': ["",""...] } ]
