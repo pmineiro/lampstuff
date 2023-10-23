@@ -86,17 +86,18 @@ class DataLoader(object):
 
     @staticmethod
     def prepend_to_prompt(example, profile_examples):
-        def strip_punctuation(s):
-            import regex as re
-            return re.sub(r'\p{P}+$', '', re.sub(r'^\p{P}+', '', s))
+        import regex as re
 
         # TODO: number of characters >= number of tokens, so this truncation is conservative
 
-        maxlen = 512 // max(2, len(profile_examples))
-        preamble = ', and '.join([ f'"{profex["title"]}" is the title for "{text:.{maxlen-6}s}"'
-                                   for profex in profile_examples
-                                   for text in (' '.join(strip_punctuation(profex["text"]).split()),)
-                                 ])
+        parts = []
+        for profex in profile_examples:
+            if len(', and '.join(parts)) < 1024:
+                text = ' '.join(re.sub(r'\p{P}+', '', profex['text']).split())
+                parts.append(f'"{profex["title"]}" is the title for "{text}"')
+
+        preamble = ', and '.join(parts)
+
         return f'{preamble}\n\n{example["input"]}'
 
     def rewrite_input(self, ex, newarticle):
