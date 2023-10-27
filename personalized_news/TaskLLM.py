@@ -74,8 +74,7 @@ class TaskLLM(torch.nn.Module):
         scatter_outputs = P.parallel_apply(modules = replicas[:len(kwargs_lst)],
                                            inputs = scatterenc_input_ids,
                                            kwargs_tup = kwargs_lst)
-
-        return self._tokenizer.batch_decode(P.gather(scatter_outputs, self._device_ids[0]), skip_special_tokens=True)
+        return sum(( self._tokenizer.batch_decode(o, skip_special_tokens=True) for o in scatter_outputs ), [])
 
     def learn(self, data, labels):
         if self._adapter_name:

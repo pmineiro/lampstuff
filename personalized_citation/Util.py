@@ -72,3 +72,20 @@ def set_directory(path: Path):
         yield
     finally:
         os.chdir(origin)
+
+import GPUtil
+from threading import Thread
+import time
+
+class GPUMonitor(Thread):
+    def __init__(self, delay, maxcount):
+        super().__init__()
+        self.maxcount = maxcount
+        self.delay = delay
+        self.start()
+
+    def run(self):
+        while self.maxcount > 0:
+            GPUtil.showUtilization()
+            time.sleep(self.delay)
+            self.maxcount -= 1
