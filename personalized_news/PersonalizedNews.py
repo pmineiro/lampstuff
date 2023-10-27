@@ -33,7 +33,7 @@ class DataLoader(object):
             ex['article'] = ex['input'][m.end():]
             ex['dsind'] = n
 
-    def __init__(self, batch_size, *, split, max_index, timesplit, augment=False):
+    def __init__(self, batch_size, *, split, max_index, timesplit, augment=0):
         import gzip
         import json
         import os
@@ -64,6 +64,7 @@ class DataLoader(object):
         self._max_index = inf if max_index is None else max_index
         assert self._max_index >= self._batch_size
         self._embedder = SentenceTransformer('all-mpnet-base-v2')
+        assert augment >= 0 and augment == int(augment)
         self._augment = augment
 
     @property
@@ -72,7 +73,7 @@ class DataLoader(object):
 
     @property
     def num_examples(self):
-        return self.num_raw_examples * (2 if self._augment else 1)
+        return self.num_raw_examples * (1 + self._augment)
 
     @property
     def batch_size(self):
@@ -117,18 +118,18 @@ class DataLoader(object):
 
         profs = [ (n, v) for n, v in enumerate(ex['profile']) if v['text'] != ex['article'] ]
         nprof = len(profs)
-        if nprof and self._labels:
-            rawindex = torch.randint(high=nprof, size=(1,), device='cpu').item()
-            index = profs[rawindex][0]
-            copyex = deepcopy(ex)
-            copyex['article'] = ex['profile'][index]['text']
-            self.rewrite_input(copyex, copyex['article'])
-            copyex['profile'][index]['text'] = ex['article']
-            copyex['profile'][index]['title'] = self._labels[ex['id']]
-            label = ex['profile'][index]['title']
-            return copyex, label
-        else:
-            return None
+        nextra = min(self._augment, nprof)
+        if nextra and self._labels:
+            rawindices = torch.randperm(nprof, device='cpu')[:nextra].tolist()
+            for rawindex in rawindices:
+                index = profs[rawindex][0]
+                copyex = deepcopy(ex)
+                copyex['article'] = ex['profile'][index]['text']
+                self.rewrite_input(copyex, copyex['article'])
+                copyex['profile'][index]['text'] = ex['article']
+                copyex['profile'][index]['title'] = self._labels[ex['id']]
+                label = ex['profile'][index]['title']
+                yield copyex, label
 
     def __iter__(self):
         def items():
@@ -139,7 +140,7 @@ class DataLoader(object):
                 examples = [ ex for ind in batch for ex in (self._ds[ind],) ]
                 labels = [ self._labels[ex['id']] for ex in examples ] if self._labels else [None]*len(examples)
                 if self._augment:
-                    moreexamples, morelabels = zip(*[ v for ex in examples for v in (self.swap_with_profile(ex),) if v is not None ])
+                    moreexamples, morelabels = zip(*[ v for ex in examples for v in self.swap_with_profile(ex) ])
                     examples.extend(moreexamples)
                     labels.extend(morelabels)
 
@@ -147,7 +148,7 @@ class DataLoader(object):
 
         return items()
 
-def train_loader(batch_size, *, max_index=None, timesplit=False, augment=False):
+def train_loader(batch_size, *, max_index=None, timesplit=False, augment=0):
     return DataLoader(batch_size, split='train', max_index=max_index, timesplit=timesplit, augment=augment)
 
 def dev_loader(batch_size, *, max_index=None, timesplit=False):
