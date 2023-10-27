@@ -38,6 +38,7 @@ class DataLoader(object):
         import gzip
         import json
         import os
+        import torch
         from math import inf
         from sentence_transformers import SentenceTransformer
 
@@ -66,8 +67,13 @@ class DataLoader(object):
         self._max_index = inf if max_index is None else max_index
         assert self._max_index >= self._batch_size
         self._embedder = SentenceTransformer('all-mpnet-base-v2')
+        self._pool =  self._embedder.start_multi_process_pool() if torch.cuda.device_count() > 1 else None
         assert augment >= 0 and augment == int(augment)
         self._augment = augment
+
+    def __del__(self):
+        if self._pool:
+            self._embedder.stop_multi_process_pool(self._pool)
 
     @property
     def num_labels(self):
@@ -91,7 +97,10 @@ class DataLoader(object):
 
     def embed(self, stuff):
         import torch
-        embeddings = self._embedder.encode(stuff, convert_to_tensor=True)
+        if self._pool:
+            embeddings = torch.from_numpy(self._embedder.encode_multi_process(stuff, self._pool))
+        else:
+            embeddings = self._embedder.encode(stuff, convert_to_tensor=True)
         normalized = torch.nn.functional.normalize(embeddings)
         return normalized
 
