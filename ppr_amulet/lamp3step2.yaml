@@ -26,6 +26,7 @@ code:
     - personalized_product_rating/*/*.json
     - personalized_product_rating/*/*.model
     - personalized_product_rating/*/*.pth
+    - pn_amulet
 
 search:
   job_template:
@@ -33,11 +34,11 @@ search:
     #sku: 32G8-V100-IB
     sku: G4
     command:
-      - bash ppr_amulet/lamp3step2.sh {thing}
+      - bash ppr_amulet/lamp3step2.sh {augment}
   type: grid
   max_trials: 1000
   params:
-    - name: thing
+    - name: augment
       spec: discrete
       values:
         - 8
