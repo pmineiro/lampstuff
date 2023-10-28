@@ -40,5 +40,5 @@ search:
     - name: augment
       spec: discrete
       values:
-        - 1
+        - 4
         - 8
