@@ -1,5 +1,6 @@
 bitsandbytes
 jupyter
+gputil
 more_itertools
 parameterfree
 peft
