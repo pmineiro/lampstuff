@@ -34,11 +34,17 @@ search:
     #sku: 32G8-V100-IB
     sku: G4
     command:
-      - bash ppr_amulet/lamp3step2.sh {augment}
+      - bash ppr_amulet/lamp3step2.sh {augment} {gamma}
   type: grid
   max_trials: 1000
   params:
     - name: augment
       spec: discrete
       values:
-        - 8
+        - 4
+    - name: gamma
+      spec: discrete
+      values:
+        - 0.5
+        - 1
+        - 2
