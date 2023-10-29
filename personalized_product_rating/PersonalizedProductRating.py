@@ -164,6 +164,9 @@ class DataLoader(object):
                     moreexamples, morelabels = zip(*[ v for ex in examples for v in self.swap_with_profile(ex) ])
                     examples.extend(moreexamples)
                     labels.extend(morelabels)
+                    perm = torch.randperm(len(examples), device='cpu').tolist()
+                    examples = [ examples[n] for n in perm ]
+                    labels = [ labels[n] for n in perm ]
 
                 yield (examples, labels)
 
