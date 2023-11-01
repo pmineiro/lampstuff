@@ -1,34 +1,31 @@
-description: lamp task 3 step 2
+description: lamp task 4 step 2
 
 target:
   service: amlk8s
-  #name: ms-shared
-  #vc: MS-Shared
   name: itplabrr1cl1
   vc: mprr4
-  #vc: resrchvc
 
 environment:
   image: nvidia/pytorch:21.07-py3
   registry: nvcr.io
   setup:
     - export PATH=$$PATH:$$HOME/.local/bin
-    - bash ppr_amulet/setup.sh
+    - bash pn_amulet/setup.sh
 
 code:
   local_dir: $CONFIG_DIR/..
   ignore:
     - personalized_citation
-    - personalized_news
-    - personalized_product_rating/.ipynb_checkpoints
-    - personalized_product_rating/.gitignore
-    - personalized_product_rating/*.json.gz
-    - personalized_product_rating/*.swp
-    - personalized_product_rating/*/*.bin
-    - personalized_product_rating/*/*.json
-    - personalized_product_rating/*/*.model
-    - personalized_product_rating/*/*.pth
-    - pn_amulet
+    - personalized_product_rating
+    - personalized_news/.ipynb_checkpoints
+    - personalized_news/.gitignore
+    - personalized_news/*.json.gz
+    - personalized_news/*.swp
+    - personalized_news/*/*.bin
+    - personalized_news/*/*.json
+    - personalized_news/*/*.model
+    - personalized_news/*/*.pth
+    - ppr_amulet
 
 search:
   job_template:
@@ -36,7 +33,7 @@ search:
     #sku: 32G8-V100-IB
     sku: G4-V100-IB-CUDA11.3
     command:
-      - bash ppr_amulet/lamp3step2.sh {augment} {gamma}
+      - bash pn_amulet/lamp4step2.sh {augment} {gamma}
   type: grid
   max_trials: 1000
   params:
