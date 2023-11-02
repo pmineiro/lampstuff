@@ -1,10 +1,11 @@
 class ProgressPrinter(object):
-    def __init__(self, *header):
+    def __init__(self, *header, silent=False):
         super().__init__()
         self.rawheader = header
         self.width = max(14, max(len(h) + 8 for h in self.rawheader))
         self.autoprint = True
         self.extra = None
+        self.silent = silent
 
     @property
     def extra(self):
@@ -51,7 +52,7 @@ class ProgressPrinter(object):
             return f'{dt/(7*24*60*60):>5.3g} w'
 
     def print(self):
-        if any(self.nsincelast):
+        if not self.silent and any(self.nsincelast):
             import time
 
             end = time.time()
@@ -73,7 +74,8 @@ class ProgressPrinter(object):
         import time
 
         self.fullheader = ['n'] + [ f'{what} (since)' for what in self.rawheader ] + ['dt']
-        print(' '.join([ f'{h:<7s}' if n == 0 else f'{h:>7s}' if h == 'dt' else f'{h:>{self.width}s}' for n, h in enumerate(self.fullheader) ]), flush=True)
+        if not self.silent:
+            print(' '.join([ f'{h:<7s}' if n == 0 else f'{h:>7s}' if h == 'dt' else f'{h:>{self.width}s}' for n, h in enumerate(self.fullheader) ]), flush=True)
         self.cnt = 0
         self.n = [0] * len(self.rawheader)
         self.sum = [0] * len(self.rawheader)
