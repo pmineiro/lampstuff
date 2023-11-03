@@ -33,13 +33,16 @@ class DataLoader(object):
             ex['article'] = ex['input'][m.end():]
             ex['dsind'] = n
 
-    def __init__(self, batch_size, *, split, max_index, timesplit, augment=0):
+    def __init__(self, batch_size, *, split, max_index, timesplit, multi, augment=0):
         import gzip
         import json
         import os
         import torch
         from math import inf
         from sentence_transformers import SentenceTransformer
+
+        assert multi[0] == int(multi[0]) and multi[1] == int(multi[1]) and 0 <= multi[0] and 1 <= multi[1]
+        self._multi = multi
 
         extra = "time_" if timesplit else ""
 
@@ -64,14 +67,9 @@ class DataLoader(object):
         self._batch_size = batch_size
         self._max_index = inf if max_index is None else max_index
         assert self._max_index >= self._batch_size
-        self._embedder = SentenceTransformer('all-mpnet-base-v2')
-        self._pool =  self._embedder.start_multi_process_pool() if torch.cuda.device_count() > 1 else None
+        self._embedder = SentenceTransformer('all-mpnet-base-v2', device=f'cuda:{multi[0]}')
         assert augment >= 0 and augment == int(augment)
         self._augment = augment
-
-    def __del__(self):
-        if self._pool:
-            self._embedder.stop_multi_process_pool(self._pool)
 
     @property
     def num_raw_examples(self):
@@ -87,12 +85,8 @@ class DataLoader(object):
 
     def embed(self, stuff):
         import torch
-        if self._pool:
-            embeddings = torch.from_numpy(self._embedder.encode_multi_process(stuff, self._pool))
-        else:
-            embeddings = self._embedder.encode(stuff, convert_to_tensor=True)
-        normalized = torch.nn.functional.normalize(embeddings)
-        return normalized
+        embeddings = self._embedder.encode(stuff, convert_to_tensor=True)
+        return torch.nn.functional.normalize(embeddings)
 
     @staticmethod
     def prepend_to_prompt(example, profile_examples):
@@ -125,43 +119,56 @@ class DataLoader(object):
         from copy import deepcopy
         import torch
 
-        profs = [ (n, v) for n, v in enumerate(ex['profile']) if v['text'] != ex['article'] ]
-        nprof = len(profs)
-        nextra = min(self._augment, nprof)
-        if nextra and self._labels:
-            rawindices = torch.randperm(nprof, device='cpu')[:nextra].tolist()
-            for rawindex in rawindices:
-                index = profs[rawindex][0]
-                copyex = deepcopy(ex)
-                copyex['article'] = ex['profile'][index]['text']
-                self.rewrite_input(copyex, copyex['article'])
-                copyex['profile'][index]['text'] = ex['article']
-                copyex['profile'][index]['title'] = self._labels[ex['id']]
-                label = ex['profile'][index]['title']
-                yield copyex, label
+        if self._labels and self._augment:
+            profs = [ (n, v) for n, v in enumerate(ex['profile']) if v['text'] != ex['article'] ]
+            nprof = len(profs)
+            nextra = min(self._augment, nprof)
+            if nextra:
+                rawindices = torch.randperm(nprof, device='cpu')[:nextra].tolist()
+                for rawindex in rawindices:
+                    index = profs[rawindex][0]
+                    copyex = deepcopy(ex)
+                    copyex['article'] = ex['profile'][index]['text']
+                    self.rewrite_input(copyex, copyex['article'])
+                    copyex['profile'][index]['text'] = ex['article']
+                    copyex['profile'][index]['title'] = self._labels[ex['id']]
+                    label = ex['profile'][index]['title']
+                    yield copyex, label
+            for _ in range(self._augment - nextra):
+                yield ex, self._labels[ex['id']]
 
     def __iter__(self):
         def items():
             from more_itertools import chunked
             import torch
 
-            for batch in chunked(torch.randperm(self.num_raw_examples, device='cpu').tolist(), self._batch_size):
+            roundup = (self.num_raw_examples // self._multi[1]) * self._multi[1]
+
+            my_indices = (v % self.num_raw_examples
+                          for v in torch.randperm(roundup, device='cpu').tolist()
+                          if v % self._multi[1] == self._multi[0]
+                         )
+
+            for batch in chunked(my_indices, self._batch_size):
                 examples = [ ex for ind in batch for ex in (self._ds[ind],) ]
                 labels = [ self._labels[ex['id']] for ex in examples ] if self._labels else [None]*len(examples)
                 if self._augment:
                     moreexamples, morelabels = zip(*[ v for ex in examples for v in self.swap_with_profile(ex) ])
                     examples.extend(moreexamples)
                     labels.extend(morelabels)
+                    perm = torch.randperm(len(examples), device='cpu').tolist()
+                    examples = [ examples[n] for n in perm ]
+                    labels = [ labels[n] for n in perm ]
 
-                yield (examples, labels)
+                yield from ((e, l) for e, l in zip(chunked(examples, self._batch_size), chunked(labels, self._batch_size)))
 
         return items()
 
-def train_loader(batch_size, *, max_index=None, timesplit=False, augment=0):
-    return DataLoader(batch_size, split='train', max_index=max_index, timesplit=timesplit, augment=augment)
+def train_loader(batch_size, *, max_index=None, timesplit=False, augment=0, multi=(0, 1)):
+    return DataLoader(batch_size, split='train', max_index=max_index, timesplit=timesplit, augment=augment, multi=multi)
 
-def dev_loader(batch_size, *, max_index=None, timesplit=False):
-    return DataLoader(batch_size, split='dev', max_index=max_index, timesplit=timesplit)
+def dev_loader(batch_size, *, max_index=None, timesplit=False, multi=(0, 1)):
+    return DataLoader(batch_size, split='dev', max_index=max_index, timesplit=timesplit, multi=multi)
 
-def test_loader(batch_size, *, max_index=None, timesplit=False):
-    return DataLoader(batch_size, split='test', max_index=max_index, timesplit=timesplit)
+def test_loader(batch_size, *, max_index=None, timesplit=False, multi=(0, 1)):
+    return DataLoader(batch_size, split='test', max_index=max_index, timesplit=timesplit, multi=multi)
