@@ -1,10 +1,10 @@
-bitsandbytes
+bitsandbytes==0.41.1
 jupyter
 more_itertools
 parameterfree
-peft
+peft==0.5.0
 pyskiplist
 scipy
-sentence_transformers
+sentence_transformers==2.2.2
 torch==2.0.1
 transformers==4.33.3

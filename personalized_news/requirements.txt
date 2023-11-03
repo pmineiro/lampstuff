@@ -3,7 +3,7 @@ evaluate
 jupyter
 more_itertools
 parameterfree
-peft
+peft==0.5.0
 pyskiplist
 rouge-score
 scipy
