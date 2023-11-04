@@ -23,7 +23,7 @@ def step_two(rank, world_size):
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     learn_batch_size = int(os.environ.get('LEARN_BATCH_SIZE', str(batch_size)))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
-    
+
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '31337'
     dist.init_process_group(rank=rank, world_size=world_size)
@@ -44,7 +44,7 @@ def step_two(rank, world_size):
     rhat_config = LoraConfig(r=1, task_type=TaskType.SEQ_2_SEQ_LM)
     t5.add_adapter(rhat_config, "rhat")
     t5.enable_adapters()
-    
+
     taskllm = TaskLLM(t5=t5, adapter_name="taskllm")
     rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_name="rhat"), device_ids=[rank], find_unused_parameters=True)
 
@@ -67,13 +67,13 @@ def step_two(rank, world_size):
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
-        
+
         for iteration in range(max_iteration):
             for istrain, (examples, labels) in interleave(train, dev, sequential=True):
                 with torch.no_grad():
                     texts_to_embed = [ [ text[:256]
-                                         for text in (' '.join(ex['review'].split()), ) 
-                                       ] + 
+                                         for text in (' '.join(ex['review'].split()), )
+                                       ] +
                                        [ text[:256]
                                          for v in ex['profile']
                                          for text in (' '.join(v['text'].split()), )
@@ -87,10 +87,10 @@ def step_two(rank, world_size):
                                            dim=0)
                     splits = cumsum(map(len, texts_to_embed))
                     randos = [ randomized_similarity(embeddings[a:b,:], 64) for a, b in zip(splits, splits[1:]) ]
-                    prompts = [ [ dev.prepend_to_prompt(ex, [ ex['profile'][ind] for ind in indices ]) 
-                                  for indices in rando.to('cpu').tolist() 
+                    prompts = [ [ dev.prepend_to_prompt(ex, [ ex['profile'][ind] for ind in indices ])
+                                  for indices in rando.to('cpu').tolist()
                                 ]
-                                for ex, rando in zip(examples, randos) 
+                                for ex, rando in zip(examples, randos)
                               ]
                     rhats = torch.cat(inner_batch(func = rewardpredictor.module.predict,
                                                   inner_batch_size = 128,
@@ -113,15 +113,15 @@ def step_two(rank, world_size):
                     splits = cumsum(map(len, guessprompts))
                     guesses = [ (cumul[a:b,:]>=0.5).long().argmax(dim=1) for a, b in zip(splits, splits[1:]) ]
                     targets = [ int(label) - 1 for label in labels ]
-                    #rewards = [ (1 - torch.abs((g - target)/4).float()).tolist() for g, target in zip(guesses, targets) ]
-                    rewards = [ (guess == target).float().tolist() for guess, target in zip(guesses, targets) ]
-                    greedymaes = [ torch.abs(g[0] - target).item() for g, target in zip(guesses, targets) ] 
+                    rewards = [ (1 - torch.abs((guess - target)/4).float()).tolist() for guess, target in zip(guesses, targets) ]
+                    #rewards = [ (guess == target).float().tolist() for guess, target in zip(guesses, targets) ]
+                    greedymaes = [ torch.abs(guess[0] - target).item() for guess, target in zip(guesses, targets) ]
 
                 if istrain:
                     rhatprompts = sum(guessprompts, [])
                     rhattargets = sum(rewards, [])
                     with Join([rewardpredictor]):
-                        predlosses = inner_batch(func = lambda a, b: (len(a), 
+                        predlosses = inner_batch(func = lambda a, b: (len(a),
                                                                       rewardpredictor.module.learn(a, torch.Tensor([ [ r ] for r in b ]), using=rewardpredictor)
                                                                      ),
                                                  inner_batch_size = learn_batch_size,

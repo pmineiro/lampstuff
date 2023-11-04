@@ -47,18 +47,18 @@ def step_one(rank, world_size):
 
     if rank == 0:
         print(f'******** augment = {augment} max_iteration = {max_iteration} model_type = {model_type} *********')
-        
+
     with ProgressPrinter('iter', f'{k} loss', f'{k} MAE', f'{k} MAE (dev)', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
-        
+
         for iteration in range(max_iteration):
             for istrain, (examples, labels) in interleave(train, dev, sequential=True):
                 with torch.no_grad():
                     texts_to_embed = [ [ text[:256]
-                                         for text in (' '.join(ex['review'].split()), ) 
-                                       ] + 
+                                         for text in (' '.join(ex['review'].split()), )
+                                       ] +
                                        [ text[:256]
                                          for v in ex['profile']
                                          for text in (' '.join(v['text'].split()), )
