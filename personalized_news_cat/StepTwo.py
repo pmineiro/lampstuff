@@ -64,6 +64,11 @@ def step_two(rank, world_size):
     if rank == 0:
         print(f'******** augment = {augment} max_iteration = {max_iteration} model_type = {model_type} *********')
 
+    if model_type == 'xxl':
+        # ugh ... wtf ... warnings not ignored (?) ... join context manager is sus
+        import sys
+        sys.stderr = open('/dev/null', 'w')
+
     with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} acc (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
@@ -138,6 +143,6 @@ def step_two(rank, world_size):
             printer.autoprint = False
             with set_directory(output_dir):
                 if rank == 0:
-                    rewardpredictor.module.save_pretrained(f'User_keq{k}_t5base_step2_iter{iteration}_augment{augment}')
+                    rewardpredictor.module.save_pretrained(f'User_keq{k}_t5{model_type}_step2_iter{iteration}_augment{augment}')
 
     dist.destroy_process_group()
