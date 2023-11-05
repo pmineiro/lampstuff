@@ -22,6 +22,7 @@ def step_two(rank, world_size):
     gamma = float(os.environ.get('GAMMA', '1'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
+    gradfree_batch_size = int(os.environ.get('GRAD_FREE_BATCH_SIZE', '128'))
     learn_batch_size = int(os.environ.get('LEARN_BATCH_SIZE', str(batch_size)))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
 
@@ -88,7 +89,7 @@ def step_two(rank, world_size):
                                        for ex in examples
                                      ]
                     embeddings = torch.cat(inner_batch(func = dev.embed,
-                                                       inner_batch_size = 128,
+                                                       inner_batch_size = gradfree_batch_size,
                                                        inputs = (sum(texts_to_embed, []),)
                                                       ),
                                            dim=0)
@@ -100,7 +101,7 @@ def step_two(rank, world_size):
                                 for ex, rando in zip(examples, randos)
                               ]
                     rhats = torch.cat(inner_batch(func = rewardpredictor.module.predict,
-                                                  inner_batch_size = 128,
+                                                  inner_batch_size = gradfree_batch_size,
                                                   inputs = (sum(prompts, []),)
                                                  ),
                                       dim=0)
@@ -113,7 +114,7 @@ def step_two(rank, world_size):
                     nsamps = [ len(aind) for aind in actionind ]
                     guessprompts = [ [ prompt[a] for a in aind ] for prompt, aind in zip(prompts, actionind) ]
                     cumul = torch.cat(inner_batch(func = lambda p: taskllm.predict(p).exp().cumsum(dim=1),
-                                                  inner_batch_size = 128,
+                                                  inner_batch_size = gradfree_batch_size,
                                                   inputs = (sum(guessprompts, []),)
                                                  ),
                                       dim=0)
