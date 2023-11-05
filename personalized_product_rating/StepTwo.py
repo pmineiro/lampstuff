@@ -51,10 +51,11 @@ def step_two(rank, world_size):
     gumbel = torch.distributions.gumbel.Gumbel(0,1)
     def randomized_similarity(embeddings, nsamples):
         scores = embeddings[0,:] @ embeddings[1:,:].T
-        temperature = scores[0].item() - scores[min(scores.shape[0], 4)].item()
+        temperature = scores[0].item() - scores[min(scores.shape[0]-1, 4)].item()
         gumbel_shape = torch.Size([nsamples, scores.shape[0]])
         gumbels = temperature * gumbel.sample(gumbel_shape).to(scores.device)
-        return torch.unique(torch.topk(scores.unsqueeze(0) + gumbels, dim=1, k=k).indices, sorted=False, dim=0)
+        safek = min(k, scores.shape[0])
+        return torch.unique(torch.topk(scores.unsqueeze(0) + gumbels, dim=1, k=safek).indices, sorted=False, dim=0)
 
     def inner_batch(func, inner_batch_size, inputs):
         from more_itertools import chunked
