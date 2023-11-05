@@ -16,7 +16,7 @@ code:
   local_dir: $CONFIG_DIR/..
   ignore:
     - personalized_citation
-    - personalized_news
+    - personalized_news_cat
     - personalized_product_rating/.ipynb_checkpoints
     - personalized_product_rating/.gitignore
     - personalized_product_rating/*.json.gz
@@ -25,6 +25,8 @@ code:
     - personalized_product_rating/*/*.json
     - personalized_product_rating/*/*.model
     - personalized_product_rating/*/*.pth
+    - personalized_news
+    - pncat_amulet
     - pn_amulet
 
 search:
