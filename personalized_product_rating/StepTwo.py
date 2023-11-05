@@ -113,8 +113,8 @@ def step_two(rank, world_size):
                     splits = cumsum(map(len, guessprompts))
                     guesses = [ (cumul[a:b,:]>=0.5).long().argmax(dim=1) for a, b in zip(splits, splits[1:]) ]
                     targets = [ int(label) - 1 for label in labels ]
-                    rewards = [ (1 - torch.abs((guess - target)/4).float()).tolist() for guess, target in zip(guesses, targets) ]
-                    #rewards = [ (guess == target).float().tolist() for guess, target in zip(guesses, targets) ]
+                    #rewards = [ (1 - torch.abs((guess - target)/4).float()).tolist() for guess, target in zip(guesses, targets) ]
+                    rewards = [ (guess == target).float().tolist() for guess, target in zip(guesses, targets) ]
                     greedymaes = [ torch.abs(guess[0] - target).item() for guess, target in zip(guesses, targets) ]
 
                 if istrain:
