@@ -1,4 +1,4 @@
-description: lamp task 2 step 1
+description: lamp task 2 step 1 xxl
 
 target:
   service: amlk8s
@@ -34,7 +34,7 @@ search:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
     sku: 32G4-V100-IB
     command:
-      - bash pncat_amulet/lamp2step1.sh {augment}
+      - bash pncat_amulet/lamp2step1xxl.sh {augment}
   type: grid
   max_trials: 1000
   params:
@@ -44,4 +44,3 @@ search:
         - 1
         - 2
         - 4
-        - 8
