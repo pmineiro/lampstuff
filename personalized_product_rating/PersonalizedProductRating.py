@@ -74,10 +74,6 @@ class DataLoader(object):
         self._augment = augment
 
     @property
-    def num_labels(self):
-        return self._num_classes
-
-    @property
     def num_raw_examples(self):
         return min(self._max_index, len(self._ds))
 
@@ -87,7 +83,7 @@ class DataLoader(object):
 
     @property
     def choices(self):
-        return [ f'{k}' for k in range(1,6) ]
+        return [ f'{k}' for k in range(1, 6) ]
 
     @property
     def batch_size(self):
@@ -119,7 +115,7 @@ class DataLoader(object):
 
         try:
             m = re.match(
-                  r'(^What is the score of the following review on a scale of 1 to 5\? just answer with 1, 2, 3, 4, or 5 without further explanation. review: )(.*)$',
+                  r'(^What is the score of the following review on a scale of 1 to 5\? just answer with 1, 2, 3, 4, or 5 without further explanation. review: ).*$',
                   ex['input'],
                   re.DOTALL)
             ex['input'] = m.group(1) + newreview
