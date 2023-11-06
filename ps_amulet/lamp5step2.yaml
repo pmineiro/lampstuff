@@ -1,4 +1,4 @@
-description: lamp task 2 step 1 xxl
+description: lamp task 5 step 2
 
 target:
   service: amlk8s
@@ -10,33 +10,33 @@ environment:
   registry: nvcr.io
   setup:
     - export PATH=$$PATH:$$HOME/.local/bin
-    - bash pncat_amulet/setup.sh
+    - bash pn_amulet/setup.sh
 
 code:
   local_dir: $CONFIG_DIR/..
   ignore:
     - personalized_citation
-    - personalized_news_cat/.ipynb_checkpoints
-    - personalized_news_cat/.gitignore
-    - personalized_news_cat/*.json.gz
-    - personalized_news_cat/*.swp
-    - personalized_news_cat/*/*.bin
-    - personalized_news_cat/*/*.json
-    - personalized_news_cat/*/*.model
-    - personalized_news_cat/*/*.pth
+    - personalized_news_cat
     - personalized_product_rating
     - personalized_news
-    - personalized_scholarly
+    - personalized_scholarly/.ipynb_checkpoints
+    - personalized_scholarly/.gitignore
+    - personalized_scholarly/*.json.gz
+    - personalized_scholarly/*.swp
+    - personalized_scholarly/*/*.bin
+    - personalized_scholarly/*/*.json
+    - personalized_scholarly/*/*.model
+    - personalized_scholarly/*/*.pth
+    - pncat_amulet
     - ppr_amulet
     - pn_amulet
-    - ps_amulet
 
 search:
   job_template:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
-    sku: 32G4-V100-IB
+    sku: 32G8-V100-IB
     command:
-      - bash pncat_amulet/lamp2step1xxl.sh {augment}
+      - bash pn_amulet/lamp5step2.sh {augment} {gamma}
   type: grid
   max_trials: 1000
   params:
@@ -46,3 +46,8 @@ search:
         - 1
         - 2
         - 4
+        - 8
+    - name: gamma
+      spec: discrete
+      values:
+        - 1
