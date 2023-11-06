@@ -50,4 +50,4 @@ search:
     - name: gamma
       spec: discrete
       values:
-        - 1
+        - 10
