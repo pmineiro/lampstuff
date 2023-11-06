@@ -32,8 +32,7 @@ code:
 search:
   job_template:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
-    #sku: 32G8-V100-IB
-    sku: G4
+    sku: 32G4-V100-IB
     command:
       - bash pn_amulet/lamp4step1.sh {augment}
   type: grid
@@ -42,5 +41,7 @@ search:
     - name: augment
       spec: discrete
       values:
+        - 1
+        - 2
         - 4
         - 8
