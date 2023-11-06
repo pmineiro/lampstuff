@@ -19,7 +19,7 @@ def step_two(rank, world_size):
     max_iteration = int(os.environ.get('max_iteration', '5'))
     step1_iter = os.environ.get('STEP1_ITER', '0_augment4')
     augment = int(os.environ.get('AUGMENT', '1'))
-    gamma = float(os.environ.get('GAMMA', '1'))
+    gamma = float(os.environ.get('GAMMA', '5'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     learn_batch_size = int(os.environ.get('LEARN_BATCH_SIZE', str(batch_size)))
@@ -72,7 +72,7 @@ def step_two(rank, world_size):
         import sys
         sys.stderr = open('/dev/null', 'w')
 
-    with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} acc (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
+    with ProgressPrinter('iter', f'{k} loss', f'{k} rouge', f'{k} rouge (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
