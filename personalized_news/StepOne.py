@@ -17,6 +17,7 @@ def step_one(rank, world_size):
     augment = int(os.environ.get('AUGMENT', '2'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
+    inner_batch_size = int(os.environ.get('INNER_BATCH_SIZE', '128'))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
 
     os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -64,7 +65,7 @@ def step_one(rank, world_size):
                                        for ex in examples
                                      ]
                     embeddings = torch.cat(inner_batch(func = dev.embed,
-                                                       inner_batch_size = 128,
+                                                       inner_batch_size = inner_batch_size,
                                                        inputs = (sum(texts_to_embed, []),)
                                                       ),
                                            dim=0)
