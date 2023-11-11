@@ -2,7 +2,7 @@ def step_one(rank, world_size):
     import os
     from PersonalizedNewsCat import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
-    from peft import IA3Config, TaskType, prepare_model_for_kbit_training
+    from peft import LoraConfig, TaskType, prepare_model_for_kbit_training
     from TaskLLM import TaskLLM
     from transformers import T5ForConditionalGeneration
     import torch
@@ -35,7 +35,7 @@ def step_one(rank, world_size):
     else:
         assert False
 
-    taskllm_config = IA3Config(task_type=TaskType.SEQ_2_SEQ_LM)
+    taskllm_config = LoraConfig(r=len(dev.choices), task_type=TaskType.SEQ_2_SEQ_LM)
     t5.add_adapter(taskllm_config, "taskllm")
     t5.enable_adapters()
 
