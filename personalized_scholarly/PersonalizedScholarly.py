@@ -92,13 +92,11 @@ class DataLoader(object):
     def prepend_to_prompt(example, profile_examples):
         import regex as re
 
-        # TODO: number of characters >= number of tokens, so this truncation is conservative
-
         parts = []
         for profex in profile_examples:
             if len(', and '.join(parts)) < 1024:
                 text = ' '.join(re.sub(r'\p{P}+', '', profex['abstract']).split())
-                parts.append(f'"{profex["title"]}" is the title for "{text}"')
+                parts.append(f'"{profex["title"]}" is the title for "{text[:256]}"')
 
         preamble = ', and '.join(parts)
 

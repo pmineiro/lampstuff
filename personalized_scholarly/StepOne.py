@@ -57,9 +57,12 @@ def step_one(rank, world_size):
         for iteration in range(max_iteration):
             for istrain, (examples, labels) in interleave(train, dev, sequential=True):
                 with torch.no_grad():
-                    texts_to_embed = [ [ ex['abstract'] ] +
-                                       [ v['abstract']
+                    texts_to_embed = [ [ text[:256]
+                                         for text in (' '.join(ex['abstract'].split()), )
+                                       ] +
+                                       [ text[:256]
                                          for v in ex['profile']
+                                         for text in (' '.join(v['abstract'].split()), )
                                        ]
                                        for ex in examples
                                      ]
