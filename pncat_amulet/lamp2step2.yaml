@@ -36,7 +36,7 @@ search:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
     sku: 32G8-V100-IB
     command:
-      - bash pncat_amulet/lamp2step2.sh {augment}
+      - env r=5 bash pncat_amulet/lamp2step2.sh {augment}
   type: grid
   max_trials: 1000
   params:

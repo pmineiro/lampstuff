@@ -113,8 +113,6 @@ class DataLoader(object):
     def prepend_to_prompt(example, profile_examples):
         import regex as re
 
-        # TODO: number of characters >= number of tokens, so this truncation is conservative
-
         parts = []
         for profex in profile_examples:
             if len(', and '.join(parts)) < 512:

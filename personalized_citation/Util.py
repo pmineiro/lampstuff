@@ -72,3 +72,26 @@ def set_directory(path: Path):
         yield
     finally:
         os.chdir(origin)
+
+class ShufBuf(object):
+    def __init__(self, gen, *, bufsize, seed):
+        super().__init__()
+        self.gen = gen
+        self.bufsize = bufsize
+        self.seed = seed
+
+    def __iter__(self):
+        def items():
+            import random
+
+            buf = [None]*self.bufsize
+            rand = random.Random(self.seed)
+            for v in self.gen:
+                index = rand.randrange(self.bufsize)
+                if isinstance(buf[index], tuple):
+                    yield buf[index][0]
+                buf[index] = (v,)
+
+            yield from (v[0] for v in buf if isinstance(v, tuple))
+
+        return items()

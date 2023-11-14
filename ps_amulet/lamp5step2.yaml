@@ -10,7 +10,7 @@ environment:
   registry: nvcr.io
   setup:
     - export PATH=$$PATH:$$HOME/.local/bin
-    - bash pn_amulet/setup.sh
+    - bash ps_amulet/setup.sh
 
 code:
   local_dir: $CONFIG_DIR/..
@@ -36,7 +36,7 @@ search:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
     sku: 32G8-V100-IB
     command:
-      - bash pn_amulet/lamp5step2.sh {augment} {gamma}
+      - bash ps_amulet/lamp5step2.sh {augment} {gamma}
   type: grid
   max_trials: 1000
   params:

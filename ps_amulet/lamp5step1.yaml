@@ -36,7 +36,7 @@ search:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
     sku: 32G4-V100-IB
     command:
-      - bash pn_amulet/lamp5step1.sh {augment}
+      - bash ps_amulet/lamp5step1.sh {augment}
   type: grid
   max_trials: 1000
   params:

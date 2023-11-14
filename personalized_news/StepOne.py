@@ -3,7 +3,7 @@ def step_one(rank, world_size):
     import os
     from PersonalizedNews import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
-    from peft import IA3Config, TaskType, prepare_model_for_kbit_training
+    from peft import LoraConfig, TaskType, prepare_model_for_kbit_training
     from TaskLLM import TaskLLM
     from transformers import T5ForConditionalGeneration
     import torch
@@ -13,6 +13,7 @@ def step_one(rank, world_size):
     import warnings
 
     k = int(os.environ.get('k', '4'))
+    r = int(os.environ.get('r', '5'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
     augment = int(os.environ.get('AUGMENT', '2'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
@@ -37,7 +38,7 @@ def step_one(rank, world_size):
     else:
         assert False
 
-    taskllm_config = IA3Config(task_type=TaskType.SEQ_2_SEQ_LM)
+    taskllm_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
     t5.add_adapter(taskllm_config, "taskllm")
     t5.enable_adapters()
 
@@ -58,9 +59,12 @@ def step_one(rank, world_size):
         for iteration in range(max_iteration):
             for istrain, (examples, labels) in interleave(train, dev, sequential=True):
                 with torch.no_grad():
-                    texts_to_embed = [ [ ex['article'] ] + 
-                                       [ v['text']
+                    texts_to_embed = [ [ text[:256]
+                                         for text in (' '.join(ex['article'].split()), )
+                                       ] +
+                                       [ text[:256]
                                          for v in ex['profile']
+                                         for text in (' '.join(v['text'].split()), )
                                        ]
                                        for ex in examples
                                      ]

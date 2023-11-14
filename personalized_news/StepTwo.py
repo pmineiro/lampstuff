@@ -17,13 +17,14 @@ def step_two(rank, world_size):
 
     k = int(os.environ.get('k', '4'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
-    step1_iter = os.environ.get('STEP1_ITER', '1_augment2')
+    step1_iter = os.environ.get('STEP1_ITER', '0_augment8')
     augment = int(os.environ.get('AUGMENT', '1'))
     gamma = float(os.environ.get('GAMMA', '5'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     learn_batch_size = int(os.environ.get('LEARN_BATCH_SIZE', str(batch_size)))
     gradfree_batch_size = int(os.environ.get('GRAD_FREE_BATCH_SIZE', '128'))
+    n_randos = int(os.environ.get('N_RANDOS', '128'))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
 
     os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -80,9 +81,12 @@ def step_two(rank, world_size):
         for iteration in range(max_iteration):
             for istrain, (examples, labels) in interleave(train, dev, sequential=True):
                 with torch.no_grad():
-                    texts_to_embed = [ [ ex['article'] ] + 
-                                       [ v['text']
+                    texts_to_embed = [ [ text[:256]
+                                         for text in (' '.join(ex['article'].split()), )
+                                       ] +
+                                       [ text[:256]
                                          for v in ex['profile']
+                                         for text in (' '.join(v['text'].split()), )
                                        ]
                                        for ex in examples
                                      ]
@@ -92,7 +96,7 @@ def step_two(rank, world_size):
                                                       ),
                                            dim=0)
                     splits = cumsum(map(len, texts_to_embed))
-                    randos = [ randomized_similarity(embeddings[a:b,:], 64) for a, b in zip(splits, splits[1:]) ]
+                    randos = [ randomized_similarity(embeddings[a:b,:], n_randos) for a, b in zip(splits, splits[1:]) ]
                     prompts = [ [ dev.prepend_to_prompt(ex, [ ex['profile'][ind] for ind in indices ])
                                   for indices in rando.to('cpu').tolist()
                                 ]
