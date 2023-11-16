@@ -46,7 +46,6 @@ class TaskLLM(torch.nn.Module):
         self.eval()
         self._optim.zero_grad()
         output = using(x) if using else self(x)
-        # TODO: try different losses ... (?)
         loss = F.nll_loss(output, y.to(output.device))
         loss.backward()
         self._optim.step()

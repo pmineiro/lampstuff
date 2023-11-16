@@ -2,13 +2,13 @@ def step_one(rank, world_size):
     import os
     from PersonalizedNewsCat import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
-    from peft import IA3Config, TaskType, prepare_model_for_kbit_training
+    from peft import LoraConfig, TaskType, prepare_model_for_kbit_training
     from TaskLLM import TaskLLM
     from transformers import T5ForConditionalGeneration
     import torch
     import torch.distributed as dist
     from torch.nn.parallel import DistributedDataParallel as DDP
-    from Util import interleave, set_directory
+    from Util import interleave, set_directory, ShufBuf
     import warnings
 
     k = int(os.environ.get('k', '4'))
@@ -25,7 +25,7 @@ def step_one(rank, world_size):
     torch.manual_seed(2112)
     torch.cuda.set_device(rank)
 
-    train = train_loader(batch_size=batch_size, augment=augment, multi=(rank, world_size))
+    train = train_loader(batch_size=1, augment=augment, multi=(rank, world_size))
     dev = dev_loader(batch_size=batch_size, multi=(rank, 1))
 
     if model_type == 'xxl':
@@ -35,7 +35,7 @@ def step_one(rank, world_size):
     else:
         assert False
 
-    taskllm_config = IA3Config(task_type=TaskType.SEQ_2_SEQ_LM)
+    taskllm_config = LoraConfig(r=len(dev.choices), task_type=TaskType.SEQ_2_SEQ_LM)
     t5.add_adapter(taskllm_config, "taskllm")
     t5.enable_adapters()
 
@@ -44,6 +44,14 @@ def step_one(rank, world_size):
     def inner_batch(func, inner_batch_size, inputs):
         from more_itertools import chunked
         return [ func(*ib) for ib in zip(*[ chunked(g, inner_batch_size) for g in inputs ]) ]
+
+    def multichunk(gen, bs):
+        from more_itertools import chunked
+        yield from ( (a, b)
+                     for pairs in chunked(gen, bs)
+                     for a in ([v[0][0] for v in pairs], )
+                     for b in ([v[1][0] for v in pairs], )
+                   )
 
     if rank == 0:
         print(f'******** augment = {augment} max_iteration = {max_iteration} model_type = {model_type} *********')
@@ -54,7 +62,8 @@ def step_one(rank, world_size):
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
 
         for iteration in range(max_iteration):
-            for istrain, (examples, labels) in interleave(train, dev, sequential=True):
+            shuftrain = multichunk(ShufBuf(train, bufsize=10_000, seed=31337), batch_size)
+            for istrain, (examples, labels) in interleave(shuftrain, dev, sequential=True):
                 with torch.no_grad():
                     texts_to_embed = [ [ text[:256]
                                          for text in (' '.join(ex['article'].split()), )

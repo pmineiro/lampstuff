@@ -3,7 +3,7 @@ def step_one(rank, world_size):
     import os
     from PersonalizedNews import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
-    from peft import IA3Config, TaskType, prepare_model_for_kbit_training
+    from peft import LoraConfig, TaskType, prepare_model_for_kbit_training
     from TaskLLM import TaskLLM
     from transformers import T5ForConditionalGeneration
     import torch
@@ -13,10 +13,12 @@ def step_one(rank, world_size):
     import warnings
 
     k = int(os.environ.get('k', '4'))
+    r = int(os.environ.get('r', '5'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
-    augment = int(os.environ.get('AUGMENT', '4'))
+    augment = int(os.environ.get('AUGMENT', '2'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
+    inner_batch_size = int(os.environ.get('INNER_BATCH_SIZE', '128'))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
 
     os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -36,7 +38,7 @@ def step_one(rank, world_size):
     else:
         assert False
 
-    taskllm_config = IA3Config(task_type=TaskType.SEQ_2_SEQ_LM)
+    taskllm_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
     t5.add_adapter(taskllm_config, "taskllm")
     t5.enable_adapters()
 
@@ -57,14 +59,17 @@ def step_one(rank, world_size):
         for iteration in range(max_iteration):
             for istrain, (examples, labels) in interleave(train, dev, sequential=True):
                 with torch.no_grad():
-                    texts_to_embed = [ [ ex['article'] ] + 
-                                       [ v['text']
+                    texts_to_embed = [ [ text[:256]
+                                         for text in (' '.join(ex['article'].split()), )
+                                       ] +
+                                       [ text[:256]
                                          for v in ex['profile']
+                                         for text in (' '.join(v['text'].split()), )
                                        ]
                                        for ex in examples
                                      ]
                     embeddings = torch.cat(inner_batch(func = dev.embed,
-                                                       inner_batch_size = 128,
+                                                       inner_batch_size = inner_batch_size,
                                                        inputs = (sum(texts_to_embed, []),)
                                                       ),
                                            dim=0)

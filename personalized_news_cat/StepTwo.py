@@ -2,7 +2,7 @@ def step_two(rank, world_size):
     import os
     from PersonalizedNewsCat import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
-    from peft import IA3Config, TaskType, prepare_model_for_kbit_training
+    from peft import LoraConfig, TaskType, prepare_model_for_kbit_training
     from RewardPredictor import RewardPredictor
     from SimpleRegret import SimpleRegretHypercubeSampler
     from TaskLLM import TaskLLM
@@ -16,7 +16,8 @@ def step_two(rank, world_size):
 
     k = int(os.environ.get('k', '4'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
-    step1_iter = os.environ.get('STEP1_ITER', '0_augment4')
+    r = int(os.environ.get('r', '1'))
+    step1_iter = os.environ.get('STEP1_ITER', '1_augment4')
     augment = int(os.environ.get('AUGMENT', '1'))
     gamma = float(os.environ.get('GAMMA', '1'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
@@ -41,7 +42,7 @@ def step_two(rank, world_size):
         assert False
     t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'taskllm')
 
-    rhat_config = IA3Config(task_type=TaskType.SEQ_2_SEQ_LM)
+    rhat_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
     t5.add_adapter(rhat_config, "rhat")
     t5.enable_adapters()
 
@@ -92,7 +93,7 @@ def step_two(rank, world_size):
                                                       ),
                                            dim=0)
                     splits = cumsum(map(len, texts_to_embed))
-                    randos = [ randomized_similarity(embeddings[a:b,:], 64) for a, b in zip(splits, splits[1:]) ]
+                    randos = [ randomized_similarity(embeddings[a:b,:], 256) for a, b in zip(splits, splits[1:]) ]
                     prompts = [ [ dev.prepend_to_prompt(ex, [ ex['profile'][ind] for ind in indices ])
                                   for indices in rando.to('cpu').tolist()
                                 ]

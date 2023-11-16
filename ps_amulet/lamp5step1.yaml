@@ -1,0 +1,49 @@
+description: lamp task 5 step 1
+
+target:
+  service: amlk8s
+  name: itplabrr1cl1
+  vc: mprr4
+
+environment:
+  image: nvidia/pytorch:21.07-py3
+  registry: nvcr.io
+  setup:
+    - export PATH=$$PATH:$$HOME/.local/bin
+    - bash ps_amulet/setup.sh
+
+code:
+  local_dir: $CONFIG_DIR/..
+  ignore:
+    - personalized_citation
+    - personalized_news_cat
+    - personalized_product_rating
+    - personalized_news
+    - personalized_scholarly/.ipynb_checkpoints
+    - personalized_scholarly/.gitignore
+    - personalized_scholarly/*.json.gz
+    - personalized_scholarly/*.swp
+    - personalized_scholarly/*/*.bin
+    - personalized_scholarly/*/*.json
+    - personalized_scholarly/*/*.model
+    - personalized_scholarly/*/*.pth
+    - pncat_amulet
+    - ppr_amulet
+    - pn_amulet
+
+search:
+  job_template:
+    name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
+    sku: 32G4-V100-IB
+    command:
+      - bash ps_amulet/lamp5step1.sh {augment}
+  type: grid
+  max_trials: 1000
+  params:
+    - name: augment
+      spec: discrete
+      values:
+        - 1
+        - 2
+        - 4
+        - 8
