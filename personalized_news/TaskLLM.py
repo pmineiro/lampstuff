@@ -1,26 +1,38 @@
 import torch
 
 class TaskLLM(torch.nn.Module):
-    def __init__(self, *, t5, opt_factory=None, adapter_name=None, model_id=None):
+    def __init__(self, *, t5, opt_factory=None, adapter_suffix=None, model_id=None):
         import parameterfree
+        import re
         from transformers import T5ForConditionalGeneration, AutoTokenizer
 
         super().__init__()
-        self._adapter_name = adapter_name
+        self._adapter_suffix = adapter_suffix
         self._transformer = t5
-        if self._adapter_name:
-            self._transformer.set_adapter(self._adapter_name)
-
+        self.set_adapter()
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, 
                                                         use_fast=True, 
                                                         padding_side='left',
                                                         model_max_length=512)
         self._opt_factory = parameterfree.COCOB if opt_factory is None else opt_factory
         self._optim = self._opt_factory(self.parameters())
+        self._params_to_copy = { n: re.sub(r'\.raw_', '.ema_', n) for n, _ in self.named_parameters() if f'.raw_{self._adapter_suffix}.' in n }
+        self._step = 0
+        self._update_ema()
 
-    def set_adapter(self):
-        if self._adapter_name:
-            self._transformer.set_adapter(self._adapter_name)
+    def set_adapter(self, *, ema=False):
+        prefix = 'ema' if ema else 'raw'
+        self._transformer.set_adapter(f'{prefix}_{self._adapter_suffix}')
+
+    def _update_ema(self):
+        decay = 1 / (1 + self._step)
+
+        with torch.no_grad():
+            state_dict = self.state_dict()
+            for n, othern in self._params_to_copy.items():
+                state_dict[othern].lerp_(state_dict[n], decay)
+
+        self._step += 1
 
     def forward(self, data, labels):
         enc = self._tokenizer(data, return_tensors='pt', truncation=True, padding=True)
@@ -31,8 +43,8 @@ class TaskLLM(torch.nn.Module):
         labels = labels.to(self._transformer.device)
         return self._transformer(input_ids = input_ids, attention_mask = attention_mask, labels = labels).loss
 
-    def generate(self, data):
-        self.set_adapter()
+    def generate(self, data, *, ema=False):
+        self.set_adapter(ema=ema)
         self.eval()
         enc = self._tokenizer(data, return_tensors='pt', truncation=True, padding=True).to(self._transformer.device)
         output_sequences = self._transformer.generate(input_ids=enc['input_ids'], 
@@ -53,9 +65,10 @@ class TaskLLM(torch.nn.Module):
         loss = using(data, labels) if using else self(data, labels)
         loss.backward()
         self._optim.step()
+        self._update_ema()
         return loss.item()
 
-    def save_pretrained(self, model_id):
-        self.set_adapter()
+    def save_pretrained(self, model_id, *, ema=True):
+        self.set_adapter(ema=ema)
         self._transformer.save_pretrained(model_id)
         self._tokenizer.save_pretrained(model_id)

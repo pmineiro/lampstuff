@@ -1,4 +1,5 @@
 def step_one(rank, world_size):
+    from copy import deepcopy
     import evaluate
     import os
     from PersonalizedNews import train_loader, dev_loader
@@ -9,7 +10,7 @@ def step_one(rank, world_size):
     import torch
     import torch.distributed as dist
     from torch.nn.parallel import DistributedDataParallel as DDP
-    from Util import interleave, set_directory
+    from Util import interleave, set_directory, ShufBuf
     import warnings
 
     k = int(os.environ.get('k', '4'))
@@ -17,7 +18,8 @@ def step_one(rank, world_size):
     max_iteration = int(os.environ.get('max_iteration', '5'))
     augment = int(os.environ.get('AUGMENT', '2'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
-    batch_size = int(os.environ.get('BATCH_SIZE', '1'))
+    #batch_size = int(os.environ.get('BATCH_SIZE', '1'))
+    batch_size = 1
     inner_batch_size = int(os.environ.get('INNER_BATCH_SIZE', '128'))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
 
@@ -39,25 +41,35 @@ def step_one(rank, world_size):
         assert False
 
     taskllm_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
-    t5.add_adapter(taskllm_config, "taskllm")
+    t5.add_adapter(taskllm_config, "raw_taskllm")
+    t5.add_adapter(deepcopy(taskllm_config), "ema_taskllm")
     t5.enable_adapters()
 
-    taskllm = DDP(TaskLLM(t5=t5, adapter_name="taskllm"), device_ids=[rank])
+    taskllm = DDP(TaskLLM(t5=t5, adapter_suffix="taskllm"), device_ids=[rank], find_unused_parameters=True)
     rouge_metric = evaluate.load('rouge')
 
     def inner_batch(func, inner_batch_size, inputs):
         from more_itertools import chunked
         return [ func(*ib) for ib in zip(*[ chunked(g, inner_batch_size) for g in inputs ]) ]
 
+    def multichunk(gen, bs):
+        from more_itertools import chunked
+        yield from ( (a, b)
+                     for pairs in chunked(gen, bs)
+                     for a in ([v[0][0] for v in pairs], )
+                     for b in ([v[1][0] for v in pairs], )
+                   )
+
     if rank == 0:
         print(f'******** augment = {augment} max_iteration = {max_iteration} model_type = {model_type} *********')
-    with ProgressPrinter('iter', f'{k} loss', f'{k} rouge1', f'{k} rouge1 (dev)', silent=(rank > 0)) as printer, warnings.catch_warnings():
+    with ProgressPrinter('iter', f'{k} loss', f'{k} rouge1', f'{k} rouge1 ema', f'{k} rouge1 (dev)', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
 
         for iteration in range(max_iteration):
-            for istrain, (examples, labels) in interleave(train, dev, sequential=True):
+            shuftrain = multichunk(ShufBuf(train, bufsize=10_000, seed=31337), batch_size)
+            for istrain, (examples, labels) in interleave(shuftrain, dev, sequential=True):
                 with torch.no_grad():
                     texts_to_embed = [ [ text[:256]
                                          for text in (' '.join(ex['article'].split()), )
@@ -79,10 +91,12 @@ def step_one(rank, world_size):
                     prompts = [ dev.prepend_to_prompt(ex, [ ex['profile'][ind] for ind in index.to('cpu').tolist() ])
                                 for ex, index in zip(examples, indices) ]
                     guesses = taskllm.module.generate(prompts)
+                    emaguesses = taskllm.module.generate(prompts, ema=True)
                     scores = rouge_metric.compute(predictions=guesses, references=labels)['rouge1']
+                    emascores = rouge_metric.compute(predictions=emaguesses, references=labels)['rouge1']
 
                 loss = taskllm.module.learn(prompts, labels, using=taskllm) if istrain else None
-                printer.addobs(iteration, loss, scores if istrain else None, scores if not istrain else None)
+                printer.addobs(iteration, loss, scores if istrain else None, emascores if istrain else None, emascores if not istrain else None)
 
             printer.print()
             printer.autoprint = False
