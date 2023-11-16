@@ -1,4 +1,5 @@
 def step_one(rank, world_size):
+    from copy import deepcopy
     import os
     from PersonalizedNewsCat import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
@@ -36,10 +37,11 @@ def step_one(rank, world_size):
         assert False
 
     taskllm_config = LoraConfig(r=len(dev.choices), task_type=TaskType.SEQ_2_SEQ_LM)
-    t5.add_adapter(taskllm_config, "taskllm")
+    t5.add_adapter(taskllm_config, "raw_taskllm")
+    t5.add_adapter(deepcopy(taskllm_config), "ema_taskllm")
     t5.enable_adapters()
 
-    taskllm = DDP(TaskLLM(t5=t5, adapter_name="taskllm", choices=dev.choices), device_ids=[rank])
+    taskllm = DDP(TaskLLM(t5=t5, adapter_suffix="taskllm", choices=dev.choices), device_ids=[rank], find_unused_parameters=True)
 
     def inner_batch(func, inner_batch_size, inputs):
         from more_itertools import chunked
@@ -56,7 +58,7 @@ def step_one(rank, world_size):
     if rank == 0:
         print(f'******** augment = {augment} max_iteration = {max_iteration} model_type = {model_type} *********')
 
-    with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} acc (dev)', silent=(rank > 0)) as printer, warnings.catch_warnings():
+    with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} ema acc', f'{k} acc (dev)', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
@@ -88,11 +90,13 @@ def step_one(rank, world_size):
                                 for ex, index in zip(examples, indices) ]
                     targets = [ dev.choices.index(label) for label in labels ]
                     guesses = taskllm.module.predict(prompts).argmax(dim=1)
+                    emaguesses = taskllm.module.predict(prompts, ema=True).argmax(dim=1)
                     targets = torch.Tensor(targets).long().to(guesses.device)
                     acc = (guesses == targets).float().mean().item()
+                    emaacc = (emaguesses == targets).float().mean().item()
 
                 loss = taskllm.module.learn(prompts, targets, using=taskllm) if istrain else None
-                printer.addobs(iteration, loss, acc if istrain else None, acc if not istrain else None)
+                printer.addobs(iteration, loss, acc if istrain else None, emaacc if istrain else None, emaacc if not istrain else None)
 
             printer.print()
             printer.autoprint = False
