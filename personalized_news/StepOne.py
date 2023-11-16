@@ -18,8 +18,7 @@ def step_one(rank, world_size):
     max_iteration = int(os.environ.get('max_iteration', '5'))
     augment = int(os.environ.get('AUGMENT', '2'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
-    #batch_size = int(os.environ.get('BATCH_SIZE', '1'))
-    batch_size = 1
+    batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     inner_batch_size = int(os.environ.get('INNER_BATCH_SIZE', '128'))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
 
