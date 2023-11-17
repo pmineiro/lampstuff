@@ -1,16 +1,15 @@
 import torch
 
 class TaskLLM(torch.nn.Module):
-    def __init__(self, *, t5, choices, opt_factory=None, adapter_name=None, model_id=None):
+    def __init__(self, *, t5, choices, adapter_suffix, opt_factory=None):
         import parameterfree
+        import re
         from transformers import T5ForConditionalGeneration, AutoTokenizer
 
         super().__init__()
-        self._adapter_name = adapter_name
+        self._adapter_suffix = adapter_suffix
         self._transformer = t5
-        if self._adapter_name:
-            self._transformer.set_adapter(self._adapter_name)
-
+        self.set_adapter()
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, 
                                                         use_fast=True, 
                                                         padding_side='left',
@@ -20,10 +19,23 @@ class TaskLLM(torch.nn.Module):
         self._decoder_input_ids = torch.tensor([self._tokenizer.pad_token_id]).unsqueeze(0) 
         self._outputs = [ self._tokenizer([c]).input_ids[0][0] for c in choices ]
         assert len(self._outputs) == len(set(self._outputs)), self._outputs
+        self._params_to_copy = { n: re.sub(r'\.raw_', '.ema_', n) for n, _ in self.named_parameters() if f'.raw_{self._adapter_suffix}.' in n }
+        self._step = 0
+        self._update_ema()
 
-    def set_adapter(self):
-        if self._adapter_name:
-            self._transformer.set_adapter(self._adapter_name)
+    def set_adapter(self, *, ema=False):
+        prefix = 'ema' if ema else 'raw'
+        self._transformer.set_adapter(f'{prefix}_{self._adapter_suffix}')
+
+    def _update_ema(self):
+        decay = 1 / (1 + self._step)
+
+        with torch.no_grad():
+            state_dict = self.state_dict()
+            for n, othern in self._params_to_copy.items():
+                state_dict[othern].lerp_(state_dict[n], decay)
+
+        self._step += 1
 
     def forward(self, data):
         import torch.nn.functional as F
@@ -33,8 +45,8 @@ class TaskLLM(torch.nn.Module):
         logits = self._transformer(**enc, decoder_input_ids=decoder_input_ids).logits[:,-1,self._outputs]
         return F.log_softmax(logits, dim=1)
 
-    def predict(self, x):
-        self.set_adapter()
+    def predict(self, x, *, ema=False):
+        self.set_adapter(ema=ema)
         self.eval()
         return self(x)
 
@@ -49,9 +61,10 @@ class TaskLLM(torch.nn.Module):
         loss = F.nll_loss(output, y.to(output.device))
         loss.backward()
         self._optim.step()
+        self._update_ema()
         return loss.item()
 
-    def save_pretrained(self, model_id):
-        self.set_adapter()
+    def save_pretrained(self, model_id, *, ema=True):
+        self.set_adapter(ema=ema)
         self._transformer.save_pretrained(model_id)
         self._tokenizer.save_pretrained(model_id)

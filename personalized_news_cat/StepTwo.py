@@ -1,4 +1,5 @@
 def step_two(rank, world_size):
+    from copy import deepcopy
     import os
     from PersonalizedNewsCat import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
@@ -11,13 +12,13 @@ def step_two(rank, world_size):
     import torch.distributed as dist
     from torch.distributed.algorithms.join import Join
     from torch.nn.parallel import DistributedDataParallel as DDP
-    from Util import interleave, set_directory
+    from Util import interleave, set_directory, ShufBuf
     import warnings
 
     k = int(os.environ.get('k', '4'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
     r = int(os.environ.get('r', '1'))
-    step1_iter = os.environ.get('STEP1_ITER', '1_augment4')
+    step1_iter = os.environ.get('STEP1_ITER', '1_augment8')
     augment = int(os.environ.get('AUGMENT', '1'))
     gamma = float(os.environ.get('GAMMA', '1'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
@@ -31,7 +32,7 @@ def step_two(rank, world_size):
 
     torch.manual_seed(8675309)
 
-    train = train_loader(batch_size=batch_size, augment=augment, multi=(rank, world_size))
+    train = train_loader(batch_size=1, augment=augment, multi=(rank, world_size))
     dev = dev_loader(batch_size=batch_size, multi=(rank, 1))
 
     if model_type == 'xxl':
@@ -40,14 +41,16 @@ def step_two(rank, world_size):
         t5 = T5ForConditionalGeneration.from_pretrained('google/flan-t5-base').to(rank)
     else:
         assert False
-    t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'taskllm')
+    t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'raw_taskllm')
+    t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'ema_taskllm')
 
     rhat_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
-    t5.add_adapter(rhat_config, "rhat")
+    t5.add_adapter(rhat_config, "raw_rhat")
+    t5.add_adapter(deepcopy(rhat_config), "ema_rhat")
     t5.enable_adapters()
 
-    taskllm = TaskLLM(t5=t5, adapter_name="taskllm", choices=dev.choices)
-    rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_name="rhat"), device_ids=[rank], find_unused_parameters=True)
+    taskllm = TaskLLM(t5=t5, adapter_suffix="taskllm", choices=dev.choices)
+    rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_suffix="rhat"), device_ids=[rank], find_unused_parameters=True)
 
     gumbel = torch.distributions.gumbel.Gumbel(0,1)
     def randomized_similarity(embeddings, nsamples):
@@ -62,6 +65,14 @@ def step_two(rank, world_size):
         from more_itertools import chunked
         return [ func(*ib) for ib in zip(*[ chunked(g, inner_batch_size) for g in inputs ]) ]
 
+    def multichunk(gen, bs):
+        from more_itertools import chunked
+        yield from ( (a, b)
+                     for pairs in chunked(gen, bs)
+                     for a in ([v[0][0] for v in pairs], )
+                     for b in ([v[1][0] for v in pairs], )
+                   )
+
     if rank == 0:
         print(f'******** augment = {augment} max_iteration = {max_iteration} model_type = {model_type} *********')
 
@@ -70,13 +81,14 @@ def step_two(rank, world_size):
         import sys
         sys.stderr = open('/dev/null', 'w')
 
-    with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} acc (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
+    with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} acc ema', f'{k} acc (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
 
         for iteration in range(max_iteration):
-            for istrain, (examples, labels) in interleave(train, dev, sequential=True):
+            shuftrain = multichunk(ShufBuf(train, bufsize=10_000, seed=31337), batch_size)
+            for istrain, (examples, labels) in interleave(shuftrain, dev, sequential=True):
                 with torch.no_grad():
                     texts_to_embed = [ [ text[:256]
                                          for text in (' '.join(ex['article'].split()), )
@@ -122,6 +134,21 @@ def step_two(rank, world_size):
                     rewards = [ (guesses[a:b] == target).float().tolist() for a, b, target in zip(splits, splits[1:], targets) ]
                     greedyaccs = [ (guesses[a] == target).item() for a, target in zip(splits, targets) ]
 
+                    emarhats = torch.cat(inner_batch(func = lambda p: rewardpredictor.module.predict(p, ema=True),
+                                                     inner_batch_size = 128,
+                                                     inputs = (sum(prompts, []),)
+                                                    ),
+                                         dim=0)
+                    splits = cumsum(map(len, prompts))
+                    emaactions = [ SimpleRegretHypercubeSampler(emarhats[a:b].view(1, -1), gamma=gamma)[0].item() for a, b in zip(splits, splits[1:]) ]
+                    emagreedyprompts = [ prompt[a] for prompt, a in zip(prompts, emaactions) ]
+                    emaguesses = torch.cat(inner_batch(func = lambda p: taskllm.predict(p).argmax(dim=1),
+                                                       inner_batch_size = 128,
+                                                       inputs = (emagreedyprompts,)
+                                                      ),
+                                           dim=0)
+                    emagreedyaccs = [ (emaguess == target).item() for emaguess, target in zip(emaguesses, targets) ]
+
                 if istrain:
                     rhatprompts = sum(guessprompts, [])
                     rhattargets = sum(rewards, [])
@@ -136,9 +163,10 @@ def step_two(rank, world_size):
                     predloss = None
 
                 greedyacc = torch.Tensor(greedyaccs, device='cpu').float().mean().item()
+                emagreedyacc = torch.Tensor(emagreedyaccs, device='cpu').float().mean().item()
                 nsamps = torch.Tensor(nsamps, device='cpu').float().mean().item() if istrain else None
 
-                printer.addobs(iteration, predloss, greedyacc if istrain else None, greedyacc if not istrain else None, nsamps)
+                printer.addobs(iteration, predloss, greedyacc if istrain else None, emagreedyacc if istrain else None, emagreedyacc if not istrain else None, nsamps)
 
             printer.print()
             printer.autoprint = False
