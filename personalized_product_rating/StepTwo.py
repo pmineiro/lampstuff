@@ -18,7 +18,7 @@ def step_two(rank, world_size):
     k = int(os.environ.get('k', '4'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
     step1_iter = os.environ.get('STEP1_ITER', '2_augment2')
-    augment = int(os.environ.get('AUGMENT', '2'))
+    augment = int(os.environ.get('AUGMENT', '0'))
     gamma = float(os.environ.get('GAMMA', '1'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
