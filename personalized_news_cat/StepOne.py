@@ -58,6 +58,16 @@ def step_one(rank, world_size):
     if rank == 0:
         print(f'******** augment = {augment} max_iteration = {max_iteration} model_type = {model_type} *********')
 
+    def make_prior(profile):
+        from math import log
+
+        c = [1]*len(dev.choices)
+        for v in profile:
+            c[dev.choices.index(v['category'])] += 1
+        n = sum(c)
+
+        return [ log(cnt) - log(n) for cnt in c ]
+
     with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} ema acc', f'{k} acc (dev)', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
@@ -67,6 +77,7 @@ def step_one(rank, world_size):
             shuftrain = multichunk(ShufBuf(train, bufsize=10_000, seed=31337), batch_size)
             for istrain, (examples, labels) in interleave(shuftrain, dev, sequential=True):
                 with torch.no_grad():
+                    prior = torch.Tensor([ make_prior(ex['profile']) for ex in examples ]).to(taskllm.device)
                     texts_to_embed = [ [ text[:256]
                                          for text in (' '.join(ex['article'].split()), )
                                        ] +
@@ -89,13 +100,13 @@ def step_one(rank, world_size):
                     prompts = [ dev.prepend_to_prompt(ex, [ ex['profile'][ind] for ind in index.to('cpu').tolist() ])
                                 for ex, index in zip(examples, indices) ]
                     targets = [ dev.choices.index(label) for label in labels ]
-                    guesses = taskllm.module.predict(prompts).argmax(dim=1)
-                    emaguesses = taskllm.module.predict(prompts, ema=True).argmax(dim=1)
+                    guesses = taskllm.module.predict(prompts, prior=prior).argmax(dim=1)
+                    emaguesses = taskllm.module.predict(prompts, ema=True, prior=prior).argmax(dim=1)
                     targets = torch.Tensor(targets).long().to(guesses.device)
                     acc = (guesses == targets).float().mean().item()
                     emaacc = (emaguesses == targets).float().mean().item()
 
-                loss = taskllm.module.learn(prompts, targets, using=taskllm) if istrain else None
+                loss = taskllm.module.learn(prompts, targets, using=taskllm, prior=prior) if istrain else None
                 printer.addobs(iteration, loss, acc if istrain else None, emaacc if istrain else None, emaacc if not istrain else None)
 
             printer.print()

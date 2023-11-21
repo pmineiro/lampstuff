@@ -81,6 +81,16 @@ def step_two(rank, world_size):
         import sys
         sys.stderr = open('/dev/null', 'w')
 
+    def make_prior(profile):
+        from math import log
+
+        c = [1]*len(dev.choices)
+        for v in profile:
+            c[dev.choices.index(v['category'])] += 1
+        n = sum(c)
+
+        return [ log(cnt) - log(n) for cnt in c ]
+
     with ProgressPrinter('iter', f'{k} loss', f'{k} acc', f'{k} acc ema', f'{k} acc (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
@@ -90,6 +100,7 @@ def step_two(rank, world_size):
             shuftrain = multichunk(ShufBuf(train, bufsize=10_000, seed=31337), batch_size)
             for istrain, (examples, labels) in interleave(shuftrain, dev, sequential=True):
                 with torch.no_grad():
+                    prior = [ make_prior(ex['profile']) for ex in examples ]
                     texts_to_embed = [ [ text[:256]
                                          for text in (' '.join(ex['article'].split()), )
                                        ] +
@@ -124,9 +135,10 @@ def step_two(rank, world_size):
                                 ]
                     nsamps = [ len(aind) for aind in actionind ]
                     guessprompts = [ [ prompt[a] for a in aind ] for prompt, aind in zip(prompts, actionind) ]
-                    guesses = torch.cat(inner_batch(func = lambda p: taskllm.predict(p).argmax(dim=1),
+                    guesspriors = [ [ q for a in aind ] for q, aind in zip(prior, actionind) ]
+                    guesses = torch.cat(inner_batch(func = lambda p, q: taskllm.predict(p, prior=torch.Tensor(q).to(rank)).argmax(dim=1),
                                                     inner_batch_size = 128,
-                                                    inputs = (sum(guessprompts, []),)
+                                                    inputs = (sum(guessprompts, []), sum(guesspriors, []),)
                                                    ),
                                         dim=0)
                     splits = cumsum(map(len, guessprompts))
@@ -142,9 +154,9 @@ def step_two(rank, world_size):
                     splits = cumsum(map(len, prompts))
                     emaactions = [ SimpleRegretHypercubeSampler(emarhats[a:b].view(1, -1), gamma=gamma)[0].item() for a, b in zip(splits, splits[1:]) ]
                     emagreedyprompts = [ prompt[a] for prompt, a in zip(prompts, emaactions) ]
-                    emaguesses = torch.cat(inner_batch(func = lambda p: taskllm.predict(p).argmax(dim=1),
+                    emaguesses = torch.cat(inner_batch(func = lambda p, q: taskllm.predict(p, prior=torch.Tensor(q).to(rank)).argmax(dim=1),
                                                        inner_batch_size = 128,
-                                                       inputs = (emagreedyprompts,)
+                                                       inputs = (emagreedyprompts, prior,)
                                                       ),
                                            dim=0)
                     emagreedyaccs = [ (emaguess == target).item() for emaguess, target in zip(emaguesses, targets) ]

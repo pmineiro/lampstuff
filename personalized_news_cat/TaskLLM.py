@@ -13,7 +13,7 @@ class TaskLLM(torch.nn.Module):
         self._tokenizer = AutoTokenizer.from_pretrained(self._transformer.config._name_or_path, 
                                                         use_fast=True, 
                                                         padding_side='left',
-                                                        model_max_length=512)
+                                                        model_max_length=1024)
         self._opt_factory = parameterfree.COCOB if opt_factory is None else opt_factory
         self._optim = self._opt_factory(self.parameters())
         self._decoder_input_ids = torch.tensor([self._tokenizer.pad_token_id]).unsqueeze(0) 
@@ -45,20 +45,29 @@ class TaskLLM(torch.nn.Module):
         logits = self._transformer(**enc, decoder_input_ids=decoder_input_ids).logits[:,-1,self._outputs]
         return F.log_softmax(logits, dim=1)
 
-    def predict(self, x, *, ema=False):
+    def predict(self, x, *, ema=False, prior=None):
         self.set_adapter(ema=ema)
         self.eval()
-        return self(x)
+        pred = self(x)
+        if prior is not None:
+            import torch.nn.functional as F
+            return F.log_softmax(pred + prior, dim=1)
+        else:
+            return pred
 
-    def learn(self, x, y, *, using=None):
+    def learn(self, x, y, *, using=None, prior=None):
         import torch.nn.functional as F
 
         self.set_adapter()
         # self.train() gives bad results ... (?)
         self.eval()
         self._optim.zero_grad()
-        output = using(x) if using else self(x)
-        loss = F.nll_loss(output, y.to(output.device))
+        pred = using(x) if using else self(x)
+        if prior is not None:
+            import torch.nn.functional as F
+            loss = F.nll_loss(F.log_softmax(pred + prior, dim=1), y.to(pred.device))
+        else:
+            loss = F.nll_loss(pred, y.to(pred.device))
         loss.backward()
         self._optim.step()
         self._update_ema()
