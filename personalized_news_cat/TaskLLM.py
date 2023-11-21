@@ -1,7 +1,7 @@
 import torch
 
 class TaskLLM(torch.nn.Module):
-    def __init__(self, *, t5, choices, adapter_suffix, opt_factory=None):
+    def __init__(self, *, t5, choices, adapter_suffix, model_id=None, opt_factory=None):
         import parameterfree
         import re
         from transformers import T5ForConditionalGeneration, AutoTokenizer
@@ -22,6 +22,11 @@ class TaskLLM(torch.nn.Module):
         self._params_to_copy = { n: re.sub(r'\.raw_', '.ema_', n) for n, _ in self.named_parameters() if f'.raw_{self._adapter_suffix}.' in n }
         self._step = 0
         self._update_ema()
+        with torch.no_grad():
+            if model_id:
+                self.register_buffer('langprior', torch.load(f'{model_id}/langprior.pt', map_location=t5.device))
+            else:
+                self.register_buffer('langprior', self.predict([""]))
 
     def set_adapter(self, *, ema=False):
         prefix = 'ema' if ema else 'raw'
@@ -43,7 +48,7 @@ class TaskLLM(torch.nn.Module):
         enc = self._tokenizer(data, return_tensors='pt', truncation=True, padding=True).to(self._transformer.device)
         decoder_input_ids = self._decoder_input_ids.expand(enc.input_ids.shape[0], 1).to(self._transformer.device)
         logits = self._transformer(**enc, decoder_input_ids=decoder_input_ids).logits[:,-1,self._outputs]
-        return F.log_softmax(logits, dim=1)
+        return F.log_softmax(logits - self.langprior if hasattr(self, 'langprior') else logits, dim=1)
 
     def predict(self, x, *, ema=False, prior=None):
         self.set_adapter(ema=ema)
@@ -77,3 +82,4 @@ class TaskLLM(torch.nn.Module):
         self.set_adapter(ema=ema)
         self._transformer.save_pretrained(model_id)
         self._tokenizer.save_pretrained(model_id)
+        torch.save(self.langprior, f'{model_id}/langprior.pt')

@@ -41,15 +41,16 @@ def step_two(rank, world_size):
         t5 = T5ForConditionalGeneration.from_pretrained('google/flan-t5-base').to(rank)
     else:
         assert False
-    t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'raw_taskllm')
-    t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'ema_taskllm')
+    taskllm_model_id = f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}'
+    t5.load_adapter(taskllm_model_id, 'raw_taskllm')
+    t5.load_adapter(taskllm_model_id, 'ema_taskllm')
 
     rhat_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
     t5.add_adapter(rhat_config, "raw_rhat")
     t5.add_adapter(deepcopy(rhat_config), "ema_rhat")
     t5.enable_adapters()
 
-    taskllm = TaskLLM(t5=t5, adapter_suffix="taskllm", choices=dev.choices)
+    taskllm = TaskLLM(t5=t5, adapter_suffix="taskllm", model_id=taskllm_model_id, choices=dev.choices)
     rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_suffix="rhat"), device_ids=[rank], find_unused_parameters=True)
 
     gumbel = torch.distributions.gumbel.Gumbel(0,1)
