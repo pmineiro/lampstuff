@@ -24,6 +24,7 @@ def step_two(rank, world_size):
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     learn_batch_size = int(os.environ.get('LEARN_BATCH_SIZE', str(batch_size)))
+    predict_inner_batch_size = int(os.environ.get('PREDICT_INNER_BATCH_SIZE', '64'))
     output_dir = os.environ.get('AMLT_OUTPUT_DIR', '.')
 
     os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -112,7 +113,7 @@ def step_two(rank, world_size):
                                        for ex in examples
                                      ]
                     embeddings = torch.cat(inner_batch(func = dev.embed,
-                                                       inner_batch_size = 128,
+                                                       inner_batch_size = predict_inner_batch_size,
                                                        inputs = (sum(texts_to_embed, []),)
                                                       ),
                                            dim=0)
@@ -124,7 +125,7 @@ def step_two(rank, world_size):
                                 for ex, rando in zip(examples, randos)
                               ]
                     rhats = torch.cat(inner_batch(func = rewardpredictor.module.predict,
-                                                  inner_batch_size = 128,
+                        inner_batch_size = predict_inner_batch_size,
                                                   inputs = (sum(prompts, []),)
                                                  ),
                                       dim=0)
@@ -138,7 +139,7 @@ def step_two(rank, world_size):
                     guessprompts = [ [ prompt[a] for a in aind ] for prompt, aind in zip(prompts, actionind) ]
                     guesspriors = [ [ q for a in aind ] for q, aind in zip(prior, actionind) ]
                     guesses = torch.cat(inner_batch(func = lambda p, q: taskllm.predict(p, prior=torch.Tensor(q).to(rank)).argmax(dim=1),
-                                                    inner_batch_size = 128,
+                        inner_batch_size = predict_inner_batch_size,
                                                     inputs = (sum(guessprompts, []), sum(guesspriors, []),)
                                                    ),
                                         dim=0)
@@ -148,7 +149,7 @@ def step_two(rank, world_size):
                     greedyaccs = [ (guesses[a] == target).item() for a, target in zip(splits, targets) ]
 
                     emarhats = torch.cat(inner_batch(func = lambda p: rewardpredictor.module.predict(p, ema=True),
-                                                     inner_batch_size = 128,
+                        inner_batch_size = predict_inner_batch_size,
                                                      inputs = (sum(prompts, []),)
                                                     ),
                                          dim=0)
@@ -156,7 +157,7 @@ def step_two(rank, world_size):
                     emaactions = [ SimpleRegretHypercubeSampler(emarhats[a:b].view(1, -1), gamma=gamma)[0].item() for a, b in zip(splits, splits[1:]) ]
                     emagreedyprompts = [ prompt[a] for prompt, a in zip(prompts, emaactions) ]
                     emaguesses = torch.cat(inner_batch(func = lambda p, q: taskllm.predict(p, prior=torch.Tensor(q).to(rank)).argmax(dim=1),
-                                                       inner_batch_size = 128,
+                                                       inner_batch_size = predict_inner_batch_size,
                                                        inputs = (emagreedyprompts, prior,)
                                                       ),
                                            dim=0)
