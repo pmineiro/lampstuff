@@ -36,7 +36,7 @@ search:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
     sku: 32G8-V100-IB
     command:
-      - bash pn_amulet/lamp4step2.sh {augment} {gamma}
+      - env r={r} max_iteration=20 bash pn_amulet/lamp4step2.sh {augment} {gamma}
   type: grid
   max_trials: 1000
   params:
@@ -51,3 +51,9 @@ search:
       spec: discrete
       values:
         - 10
+    - name: r
+      spec: discrete
+      values:
+        - 5
+        - 10
+        - 20
