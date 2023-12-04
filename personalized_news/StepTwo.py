@@ -1,9 +1,10 @@
 def step_two(rank, world_size):
+    from copy import deepcopy
     import evaluate
     import os
     from PersonalizedNews import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
-    from peft import IA3Config, TaskType, prepare_model_for_kbit_training
+    from peft import LoraConfig, TaskType, prepare_model_for_kbit_training
     from RewardPredictor import RewardPredictor
     from SimpleRegret import SimpleRegretHypercubeSampler
     from TaskLLM import TaskLLM
@@ -16,10 +17,11 @@ def step_two(rank, world_size):
     import warnings
 
     k = int(os.environ.get('k', '4'))
+    r = int(os.environ.get('r', '5'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
     step1_iter = os.environ.get('STEP1_ITER', '0_augment8')
     augment = int(os.environ.get('AUGMENT', '1'))
-    gamma = float(os.environ.get('GAMMA', '5'))
+    gamma = float(os.environ.get('GAMMA', '10'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     learn_batch_size = int(os.environ.get('LEARN_BATCH_SIZE', str(batch_size)))
@@ -42,14 +44,17 @@ def step_two(rank, world_size):
         t5 = T5ForConditionalGeneration.from_pretrained('google/flan-t5-base').to(rank)
     else:
         assert False
-    t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'taskllm')
+    taskllm_model_id = f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}'
+    t5.load_adapter(taskllm_model_id, 'raw_taskllm')
+    t5.load_adapter(taskllm_model_id, 'ema_taskllm')
 
-    rhat_config = IA3Config(task_type=TaskType.SEQ_2_SEQ_LM)
-    t5.add_adapter(rhat_config, "rhat")
+    rhat_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
+    t5.add_adapter(rhat_config, "raw_rhat")
+    t5.add_adapter(deepcopy(rhat_config), "ema_rhat")
     t5.enable_adapters()
 
-    taskllm = TaskLLM(t5=t5, adapter_name="taskllm")
-    rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_name="rhat"), device_ids=[rank], find_unused_parameters=True)
+    taskllm = TaskLLM(t5=t5, adapter_suffix="taskllm")
+    rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_suffix="rhat"), device_ids=[rank], find_unused_parameters=True)
     rouge_metric = evaluate.load('rouge')
 
     gumbel = torch.distributions.gumbel.Gumbel(0,1)

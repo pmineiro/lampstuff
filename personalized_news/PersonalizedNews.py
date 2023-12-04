@@ -94,13 +94,13 @@ class DataLoader(object):
 
         parts = []
         for profex in profile_examples:
-            if len(', and '.join(parts)) < 1024:
+            if len(', and '.join(parts)) < 2048:
                 text = ' '.join(re.sub(r'\p{P}+', '', profex['text']).split())
                 parts.append(f'"{profex["title"]}" is the title for "{text[:256]}"')
 
         preamble = ', and '.join(parts)
 
-        return f'{preamble}\n\n{example["input"]}'
+        return f'{preamble}. {example["input"]}'
 
     def rewrite_input(self, ex, newarticle):
         import re

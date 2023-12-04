@@ -1,7 +1,7 @@
 import torch
 
 class TaskLLM(torch.nn.Module):
-    def __init__(self, *, t5, opt_factory=None, adapter_suffix=None, model_id=None):
+    def __init__(self, *, t5, opt_factory=None, adapter_suffix=None):
         import parameterfree
         import re
         from transformers import T5ForConditionalGeneration, AutoTokenizer

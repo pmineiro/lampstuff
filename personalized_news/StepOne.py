@@ -14,9 +14,9 @@ def step_one(rank, world_size):
     import warnings
 
     k = int(os.environ.get('k', '4'))
-    r = int(os.environ.get('r', '5'))
-    max_iteration = int(os.environ.get('max_iteration', '5'))
-    augment = int(os.environ.get('AUGMENT', '2'))
+    r = int(os.environ.get('r', '20'))
+    max_iteration = int(os.environ.get('max_iteration', '20'))
+    augment = int(os.environ.get('AUGMENT', '4'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     inner_batch_size = int(os.environ.get('INNER_BATCH_SIZE', '128'))
