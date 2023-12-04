@@ -58,7 +58,7 @@ class RewardPredictor(torch.nn.Module):
         enc = self._tokenizer(data, return_tensors='pt', truncation=True, padding=True).to(self._transformer.device)
         decoder_input_ids = self._decoder_input_ids.expand(enc.input_ids.shape[0], 1).to(self._transformer.device)
         last_hidden_state = self._transformer(**enc, decoder_input_ids=decoder_input_ids).encoder_last_hidden_state[:,-1,:]
-        return self._score(last_hidden_state)
+        return self._score(last_hidden_state.float())
 
     def predict(self, x, *, ema=False):
         self.set_adapter(ema=ema)
