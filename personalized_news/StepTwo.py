@@ -78,7 +78,7 @@ def step_two(rank, world_size):
         import sys
         sys.stderr = open('/dev/null', 'w')
 
-    with ProgressPrinter('iter', f'{k} loss', f'{k} rouge', f'{k} rouge (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
+    with ProgressPrinter('iter', f'{k} loss', f'{k} rouge',  f'{k} ema rouge', f'{k} ema rouge (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
@@ -112,6 +112,11 @@ def step_two(rank, world_size):
                                                   inputs = (sum(prompts, []),)
                                                  ),
                                       dim=0)
+                    emarhats = torch.cat(inner_batch(func = lambda p: rewardpredictor.module.predict(p, ema=True),
+                                                     inner_batch_size = gradfree_batch_size,
+                                                     inputs = (sum(prompts, []),)
+                                                    ),
+                                         dim=0)
                     splits = cumsum(map(len, prompts))
                     samples = [ SimpleRegretHypercubeSampler(rhats[a:b].view(1, -1), gamma=gamma) for a, b in zip(splits, splits[1:]) ]
                     actionind = [ [ exploit.item() ] + [ n for n, observed in enumerate(explore) if observed > 0 ]
@@ -125,6 +130,13 @@ def step_two(rank, world_size):
                                               inputs = (sum(guessprompts, []),)
                                              ),
                                   [])
+                    emaactions = [ SimpleRegretHypercubeSampler(emarhats[a:b].view(1, -1), gamma=gamma)[0].item() for a, b in zip(splits, splits[1:]) ]
+                    emaguessprompts = [ prompt[a] for prompt, a in zip(prompts, emaactions) ]
+                    emaguesses = sum(inner_batch(func = taskllm.generate,
+                                                 inner_batch_size = gradfree_batch_size,
+                                                 inputs = (emaguessprompts,)
+                                                ),
+                                     [])
                     splits = cumsum(map(len, guessprompts))
                     rewards = sum( ( rouge_metric.compute(predictions=guesses[a:b], 
                                                           references=[label]*(b-a),
@@ -135,6 +147,9 @@ def step_two(rank, world_size):
                     greedyrewards = rouge_metric.compute(predictions=[guesses[a] for a in splits[:-1]],
                                                          references = labels,
                                                          use_aggregator=False)['rouge1']
+                    emagreedyrewards = rouge_metric.compute(predictions=emaguesses,
+                                                            references = labels,
+                                                            use_aggregator=False)['rouge1']
 
                 if istrain:
                     rhatprompts = sum(guessprompts, [])
@@ -149,9 +164,15 @@ def step_two(rank, world_size):
                     predloss = None
 
                 greedyreward = torch.Tensor(greedyrewards, device='cpu').float().mean().item()
+                emagreedyreward = torch.Tensor(emagreedyrewards, device='cpu').float().mean().item()
                 nsamps = torch.Tensor(nsamps, device='cpu').float().mean().item() if istrain else None
 
-                printer.addobs(iteration, predloss, greedyreward if istrain else None, greedyreward if not istrain else None, nsamps)
+                printer.addobs(iteration,
+                               predloss,
+                               greedyreward if istrain else None,
+                               emagreedyreward if istrain else None,
+                               emagreedyreward if not istrain else None,
+                               nsamps)
 
             printer.print()
             printer.autoprint = False
