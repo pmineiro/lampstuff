@@ -1,9 +1,10 @@
 def step_two(rank, world_size):
+    from copy import deepcopy
     import evaluate
     import os
     from PersonalizedScholarly import train_loader, dev_loader
     from ProgressPrinter import ProgressPrinter
-    from peft import IA3Config, TaskType, prepare_model_for_kbit_training
+    from peft import LoraConfig, TaskType, prepare_model_for_kbit_training
     from RewardPredictor import RewardPredictor
     from SimpleRegret import SimpleRegretHypercubeSampler
     from TaskLLM import TaskLLM
@@ -16,10 +17,11 @@ def step_two(rank, world_size):
     import warnings
 
     k = int(os.environ.get('k', '4'))
+    r = int(os.environ.get('r', '5'))
     max_iteration = int(os.environ.get('max_iteration', '5'))
-    step1_iter = os.environ.get('STEP1_ITER', '2_augment8')
+    step1_iter = os.environ.get('STEP1_ITER', '4_augment4')
     augment = int(os.environ.get('AUGMENT', '1'))
-    gamma = float(os.environ.get('GAMMA', '5'))
+    gamma = float(os.environ.get('GAMMA', '10'))
     model_type = os.environ.get('MODEL_TYPE', 'base')
     batch_size = int(os.environ.get('BATCH_SIZE', '1'))
     learn_batch_size = int(os.environ.get('LEARN_BATCH_SIZE', str(batch_size)))
@@ -42,14 +44,17 @@ def step_two(rank, world_size):
         t5 = T5ForConditionalGeneration.from_pretrained('google/flan-t5-base').to(rank)
     else:
         assert False
-    t5.load_adapter(f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}', 'taskllm')
+    taskllm_model_id = f'User_keq{k}_t5{model_type}_step1_iter{step1_iter}'
+    t5.load_adapter(taskllm_model_id, 'raw_taskllm')
+    t5.load_adapter(taskllm_model_id, 'ema_taskllm')
 
-    rhat_config = IA3Config(task_type=TaskType.SEQ_2_SEQ_LM)
-    t5.add_adapter(rhat_config, "rhat")
+    rhat_config = LoraConfig(r=r, task_type=TaskType.SEQ_2_SEQ_LM)
+    t5.add_adapter(rhat_config, "raw_rhat")
+    t5.add_adapter(deepcopy(rhat_config), "ema_rhat")
     t5.enable_adapters()
 
-    taskllm = TaskLLM(t5=t5, adapter_name="taskllm")
-    rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_name="rhat"), device_ids=[rank], find_unused_parameters=True)
+    taskllm = TaskLLM(t5=t5, adapter_suffix="taskllm")
+    rewardpredictor = DDP(RewardPredictor(t5=t5, adapter_suffix="rhat"), device_ids=[rank], find_unused_parameters=True)
     rouge_metric = evaluate.load('rouge')
 
     gumbel = torch.distributions.gumbel.Gumbel(0,1)
@@ -73,7 +78,7 @@ def step_two(rank, world_size):
         import sys
         sys.stderr = open('/dev/null', 'w')
 
-    with ProgressPrinter('iter', f'{k} loss', f'{k} rouge', f'{k} rouge (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
+    with ProgressPrinter('iter', f'{k} loss', f'{k} rouge',  f'{k} ema rouge', f'{k} ema rouge (dev)', 'nsamps', silent=(rank > 0)) as printer, warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*MatMul8bitLt.*")
         warnings.filterwarnings("ignore", message=".*If you want to save 8-bit models.*")
         cumsum = lambda z, acc=0: [0] + [ acc := acc + v for v in z ]
@@ -107,6 +112,11 @@ def step_two(rank, world_size):
                                                   inputs = (sum(prompts, []),)
                                                  ),
                                       dim=0)
+                    emarhats = torch.cat(inner_batch(func = lambda p: rewardpredictor.module.predict(p, ema=True),
+                                                     inner_batch_size = gradfree_batch_size,
+                                                     inputs = (sum(prompts, []),)
+                                                    ),
+                                         dim=0)
                     splits = cumsum(map(len, prompts))
                     samples = [ SimpleRegretHypercubeSampler(rhats[a:b].view(1, -1), gamma=gamma) for a, b in zip(splits, splits[1:]) ]
                     actionind = [ [ exploit.item() ] + [ n for n, observed in enumerate(explore) if observed > 0 ]
@@ -120,6 +130,13 @@ def step_two(rank, world_size):
                                               inputs = (sum(guessprompts, []),)
                                              ),
                                   [])
+                    emaactions = [ SimpleRegretHypercubeSampler(emarhats[a:b].view(1, -1), gamma=gamma)[0].item() for a, b in zip(splits, splits[1:]) ]
+                    emaguessprompts = [ prompt[a] for prompt, a in zip(prompts, emaactions) ]
+                    emaguesses = sum(inner_batch(func = taskllm.generate,
+                                                 inner_batch_size = gradfree_batch_size,
+                                                 inputs = (emaguessprompts,)
+                                                ),
+                                     [])
                     splits = cumsum(map(len, guessprompts))
                     rewards = sum( ( rouge_metric.compute(predictions=guesses[a:b], 
                                                           references=[label]*(b-a),
@@ -130,6 +147,9 @@ def step_two(rank, world_size):
                     greedyrewards = rouge_metric.compute(predictions=[guesses[a] for a in splits[:-1]],
                                                          references = labels,
                                                          use_aggregator=False)['rouge1']
+                    emagreedyrewards = rouge_metric.compute(predictions=emaguesses,
+                                                            references = labels,
+                                                            use_aggregator=False)['rouge1']
 
                 if istrain:
                     rhatprompts = sum(guessprompts, [])
@@ -144,9 +164,15 @@ def step_two(rank, world_size):
                     predloss = None
 
                 greedyreward = torch.Tensor(greedyrewards, device='cpu').float().mean().item()
+                emagreedyreward = torch.Tensor(emagreedyrewards, device='cpu').float().mean().item()
                 nsamps = torch.Tensor(nsamps, device='cpu').float().mean().item() if istrain else None
 
-                printer.addobs(iteration, predloss, greedyreward if istrain else None, greedyreward if not istrain else None, nsamps)
+                printer.addobs(iteration,
+                               predloss,
+                               greedyreward if istrain else None,
+                               emagreedyreward if istrain else None,
+                               emagreedyreward if not istrain else None,
+                               nsamps)
 
             printer.print()
             printer.autoprint = False

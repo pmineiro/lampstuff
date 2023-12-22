@@ -100,7 +100,7 @@ class DataLoader(object):
 
         preamble = ', and '.join(parts)
 
-        return f'{preamble}\n\n{example["input"]}'
+        return f'{preamble}.  Following the given patterns {example["input"]}'
 
     def rewrite_input(self, ex, newabstract):
         import re
