@@ -1,1 +1,1 @@
-../personalized_product_rating/RewardPredictor.py
+../personalized_news/RewardPredictor.py
