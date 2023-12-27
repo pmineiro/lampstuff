@@ -1,0 +1,12 @@
+bitsandbytes==0.41.1
+evaluate
+jupyter
+more_itertools
+parameterfree
+peft==0.5.0
+pyskiplist
+rouge-score
+scipy
+sentence_transformers==2.2.2
+torch==2.0.1
+transformers==4.33.3
