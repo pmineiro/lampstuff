@@ -38,7 +38,7 @@ search:
     name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
     sku: 32G4-V100-IB
     command:
-      - env max_iteration=5 r={r} bash ptweet_amulet/lamp7step1.sh {augment}
+      - env max_iteration=20 k={k} r={r} bash ptweet_amulet/lamp7step1.sh {augment}
   type: grid
   max_trials: 1000
   params:
@@ -47,11 +47,16 @@ search:
       values:
         - 1
         - 2
-        - 4
-        - 8
     - name: r
       spec: discrete
       values:
-        - 5
         - 10
         - 20
+    - name: k
+      spec: discrete
+      values:
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
