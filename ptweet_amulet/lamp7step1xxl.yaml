@@ -1,0 +1,57 @@
+description: lamp task 7 step 1 xxl
+
+target:
+  service: amlk8s
+  name: itplabrr1cl1
+  vc: mprr4
+
+environment:
+  image: nvidia/pytorch:21.07-py3
+  registry: nvcr.io
+  setup:
+    - export PATH=$$PATH:$$HOME/.local/bin
+    - bash ptweet_amulet/setup.sh
+
+code:
+  local_dir: $CONFIG_DIR/..
+  ignore:
+    - personalized_citation
+    - personalized_news_cat
+    - personalized_product_rating
+    - personalized_news
+    - personalized_scholarly
+    - personalized_tweet/.ipynb_checkpoints
+    - personalized_tweet/.gitignore
+    - personalized_tweet/*.json.gz
+    - personalized_tweet/*.swp
+    - personalized_tweet/*/*.bin
+    - personalized_tweet/*/*.json
+    - personalized_tweet/*/*.model
+    - personalized_tweet/*/*.pth
+    - pncat_amulet
+    - ppr_amulet
+    - pn_amulet
+    - pschol_amulet
+
+search:
+  job_template:
+    name: grid_{experiment_name:s}_{auto:3s}_{random_string:s}
+    sku: 32G4-V100-IB
+    command:
+      - env max_iteration=5 r={r} bash ptweet_amulet/lamp7step1xxl.sh {augment}
+  type: grid
+  max_trials: 1000
+  params:
+    - name: augment
+      spec: discrete
+      values:
+        - 1
+        - 2
+        - 4
+        - 8
+    - name: r
+      spec: discrete
+      values:
+        - 5
+        - 10
+        - 20
