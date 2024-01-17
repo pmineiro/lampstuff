@@ -95,7 +95,7 @@ class DataLoader(object):
         parts = []
         for profex in profile_examples:
             if len(', and '.join(parts)) < 1024:
-                text = ' '.join(re.sub(r'\p{P}+', '', profex['text']).split())
+                text = ' '.join(re.sub(r'"', '', profex['text']).split())
                 parts.append(f'"{text}"')
 
         preamble = ', and '.join(parts)
